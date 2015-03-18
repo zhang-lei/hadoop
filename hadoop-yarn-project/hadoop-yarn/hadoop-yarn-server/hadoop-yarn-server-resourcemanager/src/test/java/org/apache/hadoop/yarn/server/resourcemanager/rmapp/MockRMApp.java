@@ -274,7 +274,6 @@ public class MockRMApp implements RMApp {
     return this.amReq; 
   }
 
-  @Override
   public Map<NodeId, LogAggregationReport> getLogAggregationReportsForApp() {
     throw new UnsupportedOperationException("Not supported yet.");
   }
@@ -282,5 +281,19 @@ public class MockRMApp implements RMApp {
   @Override
   public LogAggregationStatus getLogAggregationStatusForAppReport() {
     return null;
+  }
+
+  @Override
+  public String getAggregatorAddr() {
+    throw new UnsupportedOperationException("Not supported yet.");
+  }
+  
+  @Override
+  public void removeAggregatorAddr() {
+    throw new UnsupportedOperationException("Not supported yet.");
+  }
+
+  public void setAggregatorAddr(String aggregatorAddr) {
+    throw new UnsupportedOperationException("Not supported yet.");
   }
 }
