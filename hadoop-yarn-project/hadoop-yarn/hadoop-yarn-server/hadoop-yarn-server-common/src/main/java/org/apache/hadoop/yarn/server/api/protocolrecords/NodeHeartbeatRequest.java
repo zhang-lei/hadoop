@@ -43,11 +43,11 @@ public abstract class NodeHeartbeatRequest {
     nodeHeartbeatRequest.setNodeLabels(nodeLabels);
     return nodeHeartbeatRequest;
   }
-  
+
   public static NodeHeartbeatRequest newInstance(NodeStatus nodeStatus,
       MasterKey lastKnownContainerTokenMasterKey,
       MasterKey lastKnownNMTokenMasterKey, Set<NodeLabel> nodeLabels,
-      Map<ApplicationId, String> registeredAggregators) {
+      Map<ApplicationId, String> registeredCollectors) {
     NodeHeartbeatRequest nodeHeartbeatRequest =
         Records.newRecord(NodeHeartbeatRequest.class);
     nodeHeartbeatRequest.setNodeStatus(nodeStatus);
@@ -55,7 +55,7 @@ public abstract class NodeHeartbeatRequest {
         .setLastKnownContainerTokenMasterKey(lastKnownContainerTokenMasterKey);
     nodeHeartbeatRequest
         .setLastKnownNMTokenMasterKey(lastKnownNMTokenMasterKey);
-    nodeHeartbeatRequest.setRegisteredAggregators(registeredAggregators);
+    nodeHeartbeatRequest.setRegisteredCollectors(registeredCollectors);
     return nodeHeartbeatRequest;
   }
 
@@ -77,7 +77,8 @@ public abstract class NodeHeartbeatRequest {
   public abstract void setLogAggregationReportsForApps(
       List<LogAggregationReport> logAggregationReportsForApps);
 
-  // This tells RM registered aggregators' address info on this node
-  public abstract Map<ApplicationId, String> getRegisteredAggregators();
-  public abstract void setRegisteredAggregators(Map<ApplicationId, String> appAggregatorsMap);
+  // This tells RM registered collectors' address info on this node
+  public abstract Map<ApplicationId, String> getRegisteredCollectors();
+  public abstract void setRegisteredCollectors(Map<ApplicationId,
+      String> appCollectorsMap);
 }
