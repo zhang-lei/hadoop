@@ -35,6 +35,7 @@ import org.apache.hadoop.ipc.ProtobufRpcEngine;
 import org.apache.hadoop.ipc.RPC;
 import org.apache.hadoop.ipc.WritableRpcEngine;
 import org.apache.hadoop.net.NetUtils;
+import org.apache.hadoop.ozone.OzoneConfiguration;
 import org.apache.hadoop.storagecontainer.protocol.ContainerLocationProtocol;
 import org.apache.hadoop.util.LightWeightGSet;
 import org.slf4j.Logger;
@@ -69,7 +70,7 @@ public class StorageContainerManager
   private final RPC.Server clientRpcServer;
   private final InetSocketAddress clientRpcAddress;
 
-  public StorageContainerManager(StorageContainerConfiguration conf)
+  public StorageContainerManager(OzoneConfiguration conf)
       throws IOException {
     BlocksMap containerMap = new BlocksMap(
         LightWeightGSet.computeCapacity(2.0, "BlocksMap"),
@@ -309,7 +310,7 @@ public class StorageContainerManager
   }
 
   public static void main(String[] argv) throws IOException {
-    StorageContainerConfiguration conf = new StorageContainerConfiguration();
+    OzoneConfiguration conf = new OzoneConfiguration();
     StorageContainerManager scm = new StorageContainerManager(conf);
     scm.start();
     try {
