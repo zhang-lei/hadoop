@@ -156,6 +156,33 @@ Release 2.8.0 - UNRELEASED
     YARN-3853. Add docker container runtime support to LinuxContainterExecutor.
     (Sidharta Seethana via vvasudev)
 
+    YARN-3736. Add RMStateStore apis to store and load accepted reservations for
+    failover (adhoot via asuresh)
+
+    YARN-3948. Display Application Priority in RM Web UI.(Sunil G via rohithsharmaks)
+
+    YARN-3873. PendingApplications in LeafQueue should also use OrderingPolicy. 
+    (Sunil G via wangda)
+
+    YARN-3887. Support changing Application priority during runtime. (Sunil G
+    via jianhe)
+
+    YARN-4023. Publish Application Priority to TimelineServer. (Sunil G 
+    via rohithsharmaks)
+
+    YARN-3534. Collect memory/cpu usage on the node. (Inigo Goiri via kasha)
+
+    YARN-4055. Report node resource utilization in heartbeat. 
+    (Inigo Goiri via kasha)
+
+    YARN-2923. Support configuration based NodeLabelsProvider Service in Distributed 
+    Node Label Configuration Setup. (Naganarasimha G R)
+
+    YARN-221. NM should provide a way for AM to tell it not to aggregate logs.
+    (Ming Ma via xgong)
+
+    YARN-4014. Support user cli interface in for Application Priority.
+    (Rohith Sharma K S via jianhe)
 
   IMPROVEMENTS
 
@@ -358,6 +385,37 @@ Release 2.8.0 - UNRELEASED
     YARN-3026. Move application-specific container allocation logic from
     LeafQueue to FiCaSchedulerApp. (Wangda Tan via jianhe)
 
+    YARN-3950. Add unique SHELL_ID environment variable to DistributedShell
+    (Robert Kanter via jlowe)
+
+    YARN-3965. Add startup timestamp to nodemanager UI (Hong Zhiguo via jlowe)
+
+    YARN-3543. ApplicationReport should be able to tell whether the Application
+    is AM managed or not. (Rohith Sharma K S via xgong)
+
+    YARN-4004. container-executor should print output of docker logs if the docker
+    container exits with non-0 exit status. (Varun Vasudev via xgong)
+
+    YARN-3961. Expose pending, running and reserved containers of a queue in REST
+    api and yarn top (adhoot via asuresh)
+
+    YARN-4019. Add JvmPauseMonitor to ResourceManager and NodeManager. (Robert Kanter
+    via junping_du)
+
+    YARN-3974. Refactor the reservation system test cases to use parameterized 
+    base test. (subru via curino)
+
+    YARN-3966. Fix excessive loggings in CapacityScheduler. (Jian He via wangda)
+
+    YARN-4026. Refactored ContainerAllocator to accept a list of priorites
+    rather than a single priority. (Wangda Tan via jianhe)
+
+   YARN-4031. Add JvmPauseMonitor to ApplicationHistoryServer and
+   WebAppProxyServer (djp via rkanter)
+
+    YARN-4057. If ContainersMonitor is not enabled, only print
+    related log info one time. (Jun Gong via zxu)
+
   OPTIMIZATIONS
 
     YARN-3339. TestDockerContainerExecutor should pull a single image and not
@@ -374,6 +432,12 @@ Release 2.8.0 - UNRELEASED
 
     YARN-3259. FairScheduler: Trigger fairShare updates on node events. 
     (Anubhav Dhoot via kasha)
+
+    YARN-2768. Avoid cloning Resource in FSAppAttempt#updateDemand.
+    (Hong Zhiguo via kasha)
+
+    YARN-3983. Refactored CapacityScheduleri#FiCaSchedulerApp to easier extend
+    container allocation logic. (Wangda Tan via jianhe)
 
   BUG FIXES
 
@@ -701,6 +765,39 @@ Release 2.8.0 - UNRELEASED
     YARN-3982. container-executor parsing of container-executor.cfg broken in
     trunk and branch-2. (Varun Vasudev via xgong)
 
+    YARN-3919. NPEs' while stopping service after exception during
+    CommonNodeLabelsManager#start. (varun saxane via rohithsharmaks)
+
+    YARN-3963. AddNodeLabel on duplicate label addition shows success.
+    (Bibin A Chundatt via wangda)
+
+    YARN-3971. Skip RMNodeLabelsManager#checkRemoveFromClusterNodeLabelsOfQueue 
+    on nodelabel recovery. (Bibin A Chundatt via wangda)
+
+    YARN-433. When RM is catching up with node updates then it should not expire
+    acquired containers. (Xuan Gong via zxu)
+
+    YARN-3992. TestApplicationPriority.testApplicationPriorityAllocation fails 
+    intermittently. (Contributed by Sunil G)
+
+    YARN-4005. Completed container whose app is finished is possibly not
+    removed from NMStateStore. (Jun Gong via jianhe)
+
+    YARN-4047. ClientRMService getApplications has high scheduler lock contention.
+    (Jason Lowe via jianhe)
+
+    YARN-3987. Send AM container completed msg to NM once AM finishes.
+    (sandflee via jianhe)
+
+    YARN-4028. AppBlock page key update and diagnostics value null on recovery
+    (Bibin A Chundatt via xgong)
+
+    YARN-3986. getTransferredContainers in AbstractYarnScheduler should be present
+    in YarnScheduler interface instead. (Varun Saxena via rohithsharmaks)
+
+    YARN-3896. RMNode transitioned from RUNNING to REBOOTED because its response id 
+    has not been reset synchronously. (Jun Gong via rohithsharmaks)
+
 Release 2.7.2 - UNRELEASED
 
   INCOMPATIBLE CHANGES
@@ -714,6 +811,10 @@ Release 2.7.2 - UNRELEASED
 
     YARN-3967. Fetch the application report from the AHS if the RM does not know about it.
     (Mit Desai via xgong)
+
+    YARN-3978. Configurably turn off the saving of container info in Generic AHS
+    (Eric Payne via jeagles)
+
 
   OPTIMIZATIONS
 
@@ -742,7 +843,15 @@ Release 2.7.2 - UNRELEASED
     YARN-3925. ContainerLogsUtils#getContainerLogFile fails to read container
     log files from full disks. (zhihai xu via jlowe)
 
-Release 2.7.1 - 2015-07-06 
+    YARN-3990. AsyncDispatcher may overloaded with RMAppNodeUpdateEvent when
+    Node is connected/disconnected (Bibin A Chundatt via jlowe)
+
+    YARN-3999. RM hangs on draing events. (Jian He via xgong)
+
+    YARN-3857: Memory leak in ResourceManager with SIMPLE mode.
+    (mujunchao via zxu)
+
+Release 2.7.1 - 2015-07-06
 
   INCOMPATIBLE CHANGES
 
@@ -1652,6 +1761,30 @@ Release 2.7.0 - 2015-04-20
 
     YARN-3055. Fixed ResourceManager's DelegationTokenRenewer to not stop token
     renewal of applications part of a bigger workflow. (Daryn Sharp via vinodkv)
+
+Release 2.6.2 - UNRELEASED
+
+  INCOMPATIBLE CHANGES
+
+  NEW FEATURES
+
+  IMPROVEMENTS
+
+  OPTIMIZATIONS
+
+  BUG FIXES
+
+Release 2.6.1 - UNRELEASED
+
+  INCOMPATIBLE CHANGES
+
+  NEW FEATURES
+
+  IMPROVEMENTS
+
+  OPTIMIZATIONS
+
+  BUG FIXES
 
 Release 2.6.0 - 2014-11-18
 

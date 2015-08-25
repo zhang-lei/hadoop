@@ -215,12 +215,12 @@ public abstract class AbstractYarnScheduler
   protected synchronized void containerLaunchedOnNode(
       ContainerId containerId, SchedulerNode node) {
     // Get the application for the finished container
-    SchedulerApplicationAttempt application = getCurrentAttemptForContainer
-        (containerId);
+    SchedulerApplicationAttempt application =
+        getCurrentAttemptForContainer(containerId);
     if (application == null) {
-      LOG.info("Unknown application "
-          + containerId.getApplicationAttemptId().getApplicationId()
-          + " launched container " + containerId + " on node: " + node);
+      LOG.info("Unknown application " + containerId.getApplicationAttemptId()
+          .getApplicationId() + " launched container " + containerId
+          + " on node: " + node);
       this.rmContext.getDispatcher().getEventHandler()
         .handle(new RMNodeCleanContainerEvent(node.getNodeID(), containerId));
       return;
@@ -700,5 +700,12 @@ public abstract class AbstractYarnScheduler
     // Dummy Implementation till Application Priority changes are done in
     // specific scheduler.
     return Priority.newInstance(0);
+  }
+
+  @Override
+  public void updateApplicationPriority(Priority newPriority,
+      ApplicationId applicationId) throws YarnException {
+    // Dummy Implementation till Application Priority changes are done in
+    // specific scheduler.
   }
 }

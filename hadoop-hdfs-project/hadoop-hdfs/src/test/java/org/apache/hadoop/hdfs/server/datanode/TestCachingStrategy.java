@@ -33,12 +33,16 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
+import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.server.namenode.EditLogFileOutputStream;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.io.nativeio.NativeIO;
 import org.apache.hadoop.io.nativeio.NativeIO.POSIX.CacheManipulator;
 import org.apache.hadoop.io.nativeio.NativeIOException;
+
+import static org.apache.hadoop.io.nativeio.NativeIO.POSIX.POSIX_FADV_DONTNEED;
+
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -46,7 +50,7 @@ import org.junit.Test;
 public class TestCachingStrategy {
   private static final Log LOG = LogFactory.getLog(TestCachingStrategy.class);
   private static final int MAX_TEST_FILE_LEN = 1024 * 1024;
-  private static final int WRITE_PACKET_SIZE = DFSConfigKeys.DFS_CLIENT_WRITE_PACKET_SIZE_DEFAULT;
+  private static final int WRITE_PACKET_SIZE = HdfsClientConfigKeys.DFS_CLIENT_WRITE_PACKET_SIZE_DEFAULT;
   
   private final static TestRecordingCacheTracker tracker =
       new TestRecordingCacheTracker();
@@ -78,7 +82,7 @@ public class TestCachingStrategy {
     synchronized void fadvise(int offset, int len, int flags) {
       LOG.debug("got fadvise(offset=" + offset + ", len=" + len +
           ",flags=" + flags + ")");
-      if (flags == NativeIO.POSIX.POSIX_FADV_DONTNEED) {
+      if (flags == POSIX_FADV_DONTNEED) {
         for (int i = 0; i < len; i++) {
           dropped[(offset + i)] = true;
         }
@@ -256,8 +260,8 @@ public class TestCachingStrategy {
     Configuration conf = new HdfsConfiguration();
     conf.setBoolean(DFSConfigKeys.DFS_DATANODE_DROP_CACHE_BEHIND_READS_KEY, false);
     conf.setBoolean(DFSConfigKeys.DFS_DATANODE_DROP_CACHE_BEHIND_WRITES_KEY, false);
-    conf.setBoolean(DFSConfigKeys.DFS_CLIENT_CACHE_DROP_BEHIND_READS, true);
-    conf.setBoolean(DFSConfigKeys.DFS_CLIENT_CACHE_DROP_BEHIND_WRITES, true);
+    conf.setBoolean(HdfsClientConfigKeys.DFS_CLIENT_CACHE_DROP_BEHIND_READS, true);
+    conf.setBoolean(HdfsClientConfigKeys.DFS_CLIENT_CACHE_DROP_BEHIND_WRITES, true);
     MiniDFSCluster cluster = null;
     String TEST_PATH = "/test";
     int TEST_PATH_LEN = MAX_TEST_FILE_LEN;

@@ -43,11 +43,13 @@ import org.apache.hadoop.service.AbstractService;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.ApplicationSubmissionContext;
+import org.apache.hadoop.yarn.api.records.ReservationId;
 import org.apache.hadoop.yarn.api.records.impl.pb.ApplicationSubmissionContextPBImpl;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.event.AsyncDispatcher;
 import org.apache.hadoop.yarn.event.Dispatcher;
 import org.apache.hadoop.yarn.event.EventHandler;
+import org.apache.hadoop.yarn.proto.YarnServerResourceManagerRecoveryProtos.ReservationAllocationStateProto;
 import org.apache.hadoop.yarn.security.client.RMDelegationTokenIdentifier;
 import org.apache.hadoop.yarn.server.records.Version;
 import org.apache.hadoop.yarn.server.resourcemanager.RMFatalEvent;
@@ -87,6 +89,8 @@ public abstract class RMStateStore extends AbstractService {
       "RMDTSequenceNumber_";
   protected static final String AMRMTOKEN_SECRET_MANAGER_ROOT =
       "AMRMTokenSecretManagerRoot";
+  protected static final String RESERVATION_SYSTEM_ROOT =
+      "ReservationSystemRoot";
   protected static final String VERSION_NODE = "RMVersionNode";
   protected static final String EPOCH_NODE = "EpochNode";
   private ResourceManager resourceManager;
@@ -112,7 +116,7 @@ public abstract class RMStateStore extends AbstractService {
       .addTransition(RMStateStoreState.ACTIVE, RMStateStoreState.ACTIVE,
           RMStateStoreEventType.STORE_APP, new StoreAppTransition())
       .addTransition(RMStateStoreState.ACTIVE, RMStateStoreState.ACTIVE,
-          RMStateStoreEventType.UPDATE_APP, new UpdateAppTransition())
+              RMStateStoreEventType.UPDATE_APP, new UpdateAppTransition())
       .addTransition(RMStateStoreState.ACTIVE, RMStateStoreState.ACTIVE,
           RMStateStoreEventType.REMOVE_APP, new RemoveAppTransition())
       .addTransition(RMStateStoreState.ACTIVE, RMStateStoreState.ACTIVE,
@@ -136,7 +140,16 @@ public abstract class RMStateStore extends AbstractService {
               new UpdateRMDTTransition())
        .addTransition(RMStateStoreState.ACTIVE, RMStateStoreState.ACTIVE,
            RMStateStoreEventType.UPDATE_AMRM_TOKEN,
-              new StoreOrUpdateAMRMTokenTransition())
+           new StoreOrUpdateAMRMTokenTransition())
+      .addTransition(RMStateStoreState.ACTIVE, RMStateStoreState.ACTIVE,
+          RMStateStoreEventType.STORE_RESERVATION,
+          new StoreReservationAllocationTransition())
+      .addTransition(RMStateStoreState.ACTIVE, RMStateStoreState.ACTIVE,
+          RMStateStoreEventType.UPDATE_RESERVATION,
+          new UpdateReservationAllocationTransition())
+      .addTransition(RMStateStoreState.ACTIVE, RMStateStoreState.ACTIVE,
+          RMStateStoreEventType.REMOVE_RESERVATION,
+          new RemoveReservationAllocationTransition())
       .addTransition(RMStateStoreState.ACTIVE, RMStateStoreState.FENCED,
           RMStateStoreEventType.FENCED)
       .addTransition(RMStateStoreState.FENCED, RMStateStoreState.FENCED,
@@ -152,7 +165,10 @@ public abstract class RMStateStore extends AbstractService {
           RMStateStoreEventType.STORE_DELEGATION_TOKEN,
           RMStateStoreEventType.REMOVE_DELEGATION_TOKEN,
           RMStateStoreEventType.UPDATE_DELEGATION_TOKEN,
-          RMStateStoreEventType.UPDATE_AMRM_TOKEN));
+          RMStateStoreEventType.UPDATE_AMRM_TOKEN,
+          RMStateStoreEventType.STORE_RESERVATION,
+          RMStateStoreEventType.UPDATE_RESERVATION,
+          RMStateStoreEventType.REMOVE_RESERVATION));
 
   private final StateMachine<RMStateStoreState,
                              RMStateStoreEventType,
@@ -199,8 +215,10 @@ public abstract class RMStateStore extends AbstractService {
       LOG.info("Updating info for app: " + appId);
       try {
         store.updateApplicationStateInternal(appId, appState);
-        store.notifyApplication(new RMAppEvent(appId,
-               RMAppEventType.APP_UPDATE_SAVED));
+        if (((RMStateUpdateAppEvent) event).isNotifyApplication()) {
+          store.notifyApplication(new RMAppEvent(appId,
+              RMAppEventType.APP_UPDATE_SAVED));
+        }
       } catch (Exception e) {
         LOG.error("Error updating app: " + appId, e);
         store.notifyStoreOperationFailed(e);
@@ -415,6 +433,80 @@ public abstract class RMStateStore extends AbstractService {
     }
   }
 
+  private static class StoreReservationAllocationTransition implements
+      SingleArcTransition<RMStateStore, RMStateStoreEvent> {
+    @Override
+    public void transition(RMStateStore store, RMStateStoreEvent event) {
+      if (!(event instanceof RMStateStoreStoreReservationEvent)) {
+        // should never happen
+        LOG.error("Illegal event type: " + event.getClass());
+        return;
+      }
+      RMStateStoreStoreReservationEvent reservationEvent =
+          (RMStateStoreStoreReservationEvent) event;
+      try {
+        LOG.info("Storing reservation allocation." + reservationEvent
+                .getReservationIdName());
+        store.storeReservationState(
+            reservationEvent.getReservationAllocation(),
+            reservationEvent.getPlanName(),
+            reservationEvent.getReservationIdName());
+      } catch (Exception e) {
+        LOG.error("Error while storing reservation allocation.", e);
+        store.notifyStoreOperationFailed(e);
+      }
+    }
+  }
+
+  private static class UpdateReservationAllocationTransition implements
+      SingleArcTransition<RMStateStore, RMStateStoreEvent> {
+    @Override
+    public void transition(RMStateStore store, RMStateStoreEvent event) {
+      if (!(event instanceof RMStateStoreStoreReservationEvent)) {
+        // should never happen
+        LOG.error("Illegal event type: " + event.getClass());
+        return;
+      }
+      RMStateStoreStoreReservationEvent reservationEvent =
+          (RMStateStoreStoreReservationEvent) event;
+      try {
+        LOG.info("Updating reservation allocation." + reservationEvent
+                .getReservationIdName());
+        store.updateReservationState(
+            reservationEvent.getReservationAllocation(),
+            reservationEvent.getPlanName(),
+            reservationEvent.getReservationIdName());
+      } catch (Exception e) {
+        LOG.error("Error while updating reservation allocation.", e);
+        store.notifyStoreOperationFailed(e);
+      }
+    }
+  }
+
+  private static class RemoveReservationAllocationTransition implements
+      SingleArcTransition<RMStateStore, RMStateStoreEvent> {
+    @Override
+    public void transition(RMStateStore store, RMStateStoreEvent event) {
+      if (!(event instanceof RMStateStoreStoreReservationEvent)) {
+        // should never happen
+        LOG.error("Illegal event type: " + event.getClass());
+        return;
+      }
+      RMStateStoreStoreReservationEvent reservationEvent =
+          (RMStateStoreStoreReservationEvent) event;
+      try {
+        LOG.info("Removing reservation allocation." + reservationEvent
+                .getReservationIdName());
+        store.removeReservationState(
+            reservationEvent.getPlanName(),
+            reservationEvent.getReservationIdName());
+      } catch (Exception e) {
+        LOG.error("Error while removing reservation allocation.", e);
+        store.notifyStoreOperationFailed(e);
+      }
+    }
+  }
+
   public RMStateStore() {
     super(RMStateStore.class.getName());
     ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
@@ -457,6 +549,9 @@ public abstract class RMStateStore extends AbstractService {
 
     AMRMTokenSecretManagerState amrmTokenSecretManagerState = null;
 
+    private Map<String, Map<ReservationId, ReservationAllocationStateProto>>
+        reservationState = new TreeMap<>();
+
     public Map<ApplicationId, ApplicationStateData> getApplicationState() {
       return appState;
     }
@@ -467,6 +562,11 @@ public abstract class RMStateStore extends AbstractService {
 
     public AMRMTokenSecretManagerState getAMRMTokenSecretManagerState() {
       return amrmTokenSecretManagerState;
+    }
+
+    public Map<String, Map<ReservationId, ReservationAllocationStateProto>>
+        getReservationState() {
+      return reservationState;
     }
   }
     
@@ -608,6 +708,11 @@ public abstract class RMStateStore extends AbstractService {
     dispatcher.getEventHandler().handle(new RMStateUpdateAppEvent(appState));
   }
 
+  public void updateApplicationStateSynchronously(
+      ApplicationStateData appState, boolean notifyApp) {
+    handleStoreEvent(new RMStateUpdateAppEvent(appState, notifyApp));
+  }
+
   public void updateFencedState() {
     handleStoreEvent(new RMStateStoreEvent(RMStateStoreEventType.FENCED));
   }
@@ -744,6 +849,57 @@ public abstract class RMStateStore extends AbstractService {
     handleStoreEvent(new RMStateStoreRMDTMasterKeyEvent(delegationKey,
         RMStateStoreEventType.REMOVE_MASTERKEY));
   }
+
+  /**
+   * Blocking Apis to maintain reservation state.
+   */
+  public void storeNewReservation(
+      ReservationAllocationStateProto reservationAllocation, String planName,
+      String reservationIdName) {
+    handleStoreEvent(new RMStateStoreStoreReservationEvent(
+        reservationAllocation, RMStateStoreEventType.STORE_RESERVATION,
+        planName, reservationIdName));
+  }
+
+  public void updateReservation(
+      ReservationAllocationStateProto reservationAllocation,
+      String planName, String reservationIdName) {
+    handleStoreEvent(new RMStateStoreStoreReservationEvent(
+        reservationAllocation, RMStateStoreEventType.UPDATE_RESERVATION,
+        planName, reservationIdName));
+  }
+
+  public void removeReservation(String planName, String reservationIdName) {
+    handleStoreEvent(new RMStateStoreStoreReservationEvent(
+            null, RMStateStoreEventType.REMOVE_RESERVATION,
+            planName, reservationIdName));
+  }
+
+  /**
+   * Blocking API
+   * Derived classes must implement this method to store the state of
+   * a reservation allocation.
+   */
+  protected abstract void storeReservationState(
+      ReservationAllocationStateProto reservationAllocation, String planName,
+      String reservationIdName) throws Exception;
+
+  /**
+   * Blocking API
+   * Derived classes must implement this method to remove the state of
+   * a reservation allocation.
+   */
+  protected abstract void removeReservationState(String planName,
+      String reservationIdName) throws Exception;
+
+  /**
+   * Blocking API
+   * Derived classes must implement this method to update the state of
+   * a reservation allocation.
+   */
+  protected abstract void updateReservationState(
+      ReservationAllocationStateProto reservationAllocation, String planName,
+      String reservationIdName) throws Exception;
 
   /**
    * Blocking API

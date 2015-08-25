@@ -106,7 +106,9 @@ public class SystemMetricsPublisher extends CompositeService {
               app.getUser(),
               app.getQueue(),
               app.getSubmitTime(),
-              createdTime, app.getApplicationTags()));
+              createdTime, app.getApplicationTags(),
+              app.getApplicationSubmissionContext().getUnmanagedAM(),
+              app.getApplicationSubmissionContext().getPriority()));
     }
   }
 
@@ -253,6 +255,11 @@ public class SystemMetricsPublisher extends CompositeService {
         event.getSubmittedTime());
     entityInfo.put(ApplicationMetricsConstants.APP_TAGS_INFO,
         event.getAppTags());
+    entityInfo.put(
+        ApplicationMetricsConstants.UNMANAGED_APPLICATION_ENTITY_INFO,
+        event.isUnmanagedApp());
+    entityInfo.put(ApplicationMetricsConstants.APPLICATION_PRIORITY_INFO,
+        event.getApplicationPriority().getPriority());
     entity.setOtherInfo(entityInfo);
     TimelineEvent tEvent = new TimelineEvent();
     tEvent.setEventType(

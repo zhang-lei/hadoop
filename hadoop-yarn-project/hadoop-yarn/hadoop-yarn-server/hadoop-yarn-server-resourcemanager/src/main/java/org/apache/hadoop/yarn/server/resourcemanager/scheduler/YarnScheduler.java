@@ -32,6 +32,7 @@ import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.ApplicationResourceUsageReport;
+import org.apache.hadoop.yarn.api.records.Container;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.NodeId;
 import org.apache.hadoop.yarn.api.records.Priority;
@@ -306,4 +307,25 @@ public interface YarnScheduler extends EventHandler<SchedulerEvent> {
   public Priority checkAndGetApplicationPriority(Priority priorityFromContext,
       String user, String queueName, ApplicationId applicationId)
       throws YarnException;
+
+  /**
+   *
+   * Change application priority of a submitted application at runtime
+   *
+   * @param newPriority Submitted Application priority.
+   *
+   * @param applicationId Application ID
+   */
+  public void updateApplicationPriority(Priority newPriority,
+      ApplicationId applicationId) throws YarnException;
+
+  /**
+   *
+   * Get previous attempts' live containers for work-preserving AM restart.
+   *
+   * @param appAttemptId the id of the application attempt
+   *
+   * @return list of live containers for the given attempt
+   */
+  List<Container> getTransferredContainers(ApplicationAttemptId appAttemptId);
 }

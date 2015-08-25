@@ -37,6 +37,9 @@ public final class HdfsConstants {
   public static final String MEMORY_STORAGE_POLICY_NAME = "LAZY_PERSIST";
   public static final String ALLSSD_STORAGE_POLICY_NAME = "ALL_SSD";
   public static final String ONESSD_STORAGE_POLICY_NAME = "ONE_SSD";
+  public static final String HOT_STORAGE_POLICY_NAME = "HOT";
+  public static final String WARM_STORAGE_POLICY_NAME = "WARM";
+  public static final String COLD_STORAGE_POLICY_NAME = "COLD";
   // TODO should be conf injected?
   public static final int DEFAULT_DATA_SOCKET_SIZE = 128 * 1024;
   /**
@@ -74,6 +77,13 @@ public final class HdfsConstants {
    */
   public static final String CLIENT_NAMENODE_PROTOCOL_NAME =
       "org.apache.hadoop.hdfs.protocol.ClientProtocol";
+
+  // Timeouts for communicating with DataNode for streaming writes/reads
+  public static final int READ_TIMEOUT = 60 * 1000;
+  public static final int READ_TIMEOUT_EXTENSION = 5 * 1000;
+  public static final int WRITE_TIMEOUT = 8 * 60 * 1000;
+  //for write pipeline
+  public static final int WRITE_TIMEOUT_EXTENSION = 5 * 1000;
 
   // SafeMode actions
   public enum SafeModeAction {

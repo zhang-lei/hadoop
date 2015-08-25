@@ -97,6 +97,7 @@ WebHDFS REST API
         * [Access Time](#Access_Time)
         * [Block Size](#Block_Size)
         * [Buffer Size](#Buffer_Size)
+        * [Create Flag](#Create_Flag)
         * [Create Parent](#Create_Parent)
         * [Delegation](#Delegation)
         * [Destination](#Destination)
@@ -1002,7 +1003,7 @@ When an operation fails, the server may throw an exception. The JSON schema of e
 | `SecurityException ` | `401 Unauthorized ` |
 | `IOException ` | `403 Forbidden ` |
 | `FileNotFoundException ` | `404 Not Found ` |
-| `RumtimeException ` | `500 Internal Server Error` |
+| `RuntimeException ` | `500 Internal Server Error` |
 
 Below are examples of exception responses.
 
@@ -1632,14 +1633,30 @@ See also: [`CREATE`](#Create_and_Write_to_a_File)
 
 See also: [`CREATE`](#Create_and_Write_to_a_File), [`APPEND`](#Append_to_a_File), [`OPEN`](#Open_and_Read_a_File)
 
+### Create Flag
+
+| Name | `createflag` |
+|:---- |:---- |
+| Description | Enum of possible flags to process while creating a file |
+| Type | enumerated strings |
+| Default Value | \<empty\> |
+| Valid Values | Legal combinations of create, overwrite, append and sync_block |
+| Syntax | See note below |
+
+The following combinations are not valid:
+* append,create
+* create,append,overwrite
+
+See also: [`CREATE`](#Create_and_Write_to_a_File)
+
 ### Create Parent
 
 | Name | `createparent` |
 |:---- |:---- |
 | Description | If the parent directories do not exist, should they be created? |
 | Type | boolean |
-| Default Value | false |
-| Valid Values | true |
+| Default Value | true |
+| Valid Values | true, false |
 | Syntax | true |
 
 See also: [`CREATESYMLINK`](#Create_a_Symbolic_Link)

@@ -24,12 +24,12 @@ import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.IO_FILE_BUFFER_
 import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.IO_FILE_BUFFER_SIZE_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_BLOCK_SIZE_DEFAULT;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_BLOCK_SIZE_KEY;
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_BYTES_PER_CHECKSUM_DEFAULT;
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_BYTES_PER_CHECKSUM_KEY;
+import static org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.DFS_BYTES_PER_CHECKSUM_DEFAULT;
+import static org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.DFS_BYTES_PER_CHECKSUM_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CHECKSUM_TYPE_DEFAULT;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CHECKSUM_TYPE_KEY;
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CLIENT_WRITE_PACKET_SIZE_DEFAULT;
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CLIENT_WRITE_PACKET_SIZE_KEY;
+import static org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.DFS_CLIENT_WRITE_PACKET_SIZE_DEFAULT;
+import static org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.DFS_CLIENT_WRITE_PACKET_SIZE_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_ENCRYPT_DATA_TRANSFER_DEFAULT;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_ENCRYPT_DATA_TRANSFER_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_HA_STANDBY_CHECKPOINTS_DEFAULT;
@@ -198,8 +198,8 @@ import org.apache.hadoop.hdfs.security.token.delegation.DelegationTokenSecretMan
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockCollection;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockIdManager;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockManager;
+import org.apache.hadoop.hdfs.server.blockmanagement.BlockUnderConstructionFeature;
 import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeDescriptor;
 import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeManager;
 import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeStatistics;
@@ -1041,9 +1041,10 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       assert safeMode != null && !isPopulatingReplQueues();
       StartupProgress prog = NameNode.getStartupProgress();
       prog.beginPhase(Phase.SAFEMODE);
+      long completeBlocksTotal = getCompleteBlocksTotal();
       prog.setTotal(Phase.SAFEMODE, STEP_AWAITING_REPORTED_BLOCKS,
-        getCompleteBlocksTotal());
-      setBlockTotal();
+          completeBlocksTotal);
+      setBlockTotal(completeBlocksTotal);
       blockManager.activate(conf);
     } finally {
       writeUnlock();
@@ -1957,6 +1958,25 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
   }
 
   /**
+   * Get the storage policy for a file or a directory.
+   *
+   * @param src
+   *          file/directory path
+   * @return storage policy object
+   */
+  BlockStoragePolicy getStoragePolicy(String src) throws IOException {
+    checkOperation(OperationCategory.READ);
+    waitForLoadingFSImage();
+    readLock();
+    try {
+      checkOperation(OperationCategory.READ);
+      return FSDirAttrOp.getStoragePolicy(dir, blockManager, src);
+    } finally {
+      readUnlock();
+    }
+  }
+
+  /**
    * @return All the existing block storage policies
    */
   BlockStoragePolicy[] getStoragePolicies() throws IOException {
@@ -2771,7 +2791,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       if (trackBlockCounts) {
         if (b.isComplete()) {
           numRemovedComplete++;
-          if (blockManager.hasMinStorage(b)) {
+          if (blockManager.checkMinReplication(b)) {
             numRemovedSafe++;
           }
         }
@@ -3003,7 +3023,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       curBlock = blocks[nrCompleteBlocks];
       if(!curBlock.isComplete())
         break;
-      assert blockManager.hasMinStorage(curBlock) :
+      assert blockManager.checkMinReplication(curBlock) :
               "A COMPLETE block is not minimally replicated in " + src;
     }
 
@@ -3038,8 +3058,8 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     BlockInfo penultimateBlock = pendingFile.getPenultimateBlock();
 
     // If penultimate block doesn't exist then its minReplication is met
-    boolean penultimateBlockMinReplication = penultimateBlock == null ? true :
-        blockManager.hasMinStorage(penultimateBlock);
+    boolean penultimateBlockMinReplication = penultimateBlock == null
+        || blockManager.checkMinReplication(penultimateBlock);
 
     switch(lastBlockState) {
     case COMPLETE:
@@ -3048,7 +3068,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     case COMMITTED:
       // Close file if committed blocks are minimally replicated
       if(penultimateBlockMinReplication &&
-          blockManager.hasMinStorage(lastBlock)) {
+          blockManager.checkMinReplication(lastBlock)) {
         finalizeINodeFileUnderConstruction(src, pendingFile,
             iip.getLatestSnapshotId());
         NameNode.stateChangeLog.warn("BLOCK*"
@@ -3068,25 +3088,26 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       throw new AlreadyBeingCreatedException(message);
     case UNDER_CONSTRUCTION:
     case UNDER_RECOVERY:
-      final BlockInfoUnderConstruction uc =
-          (BlockInfoUnderConstruction)lastBlock;
+      BlockUnderConstructionFeature uc =
+          lastBlock.getUnderConstructionFeature();
       // determine if last block was intended to be truncated
       Block recoveryBlock = uc.getTruncateBlock();
       boolean truncateRecovery = recoveryBlock != null;
       boolean copyOnTruncate = truncateRecovery &&
-          recoveryBlock.getBlockId() != uc.getBlockId();
+          recoveryBlock.getBlockId() != lastBlock.getBlockId();
       assert !copyOnTruncate ||
-          recoveryBlock.getBlockId() < uc.getBlockId() &&
-          recoveryBlock.getGenerationStamp() < uc.getGenerationStamp() &&
-          recoveryBlock.getNumBytes() > uc.getNumBytes() :
+          recoveryBlock.getBlockId() < lastBlock.getBlockId() &&
+          recoveryBlock.getGenerationStamp() < lastBlock.getGenerationStamp() &&
+          recoveryBlock.getNumBytes() > lastBlock.getNumBytes() :
             "wrong recoveryBlock";
 
       // setup the last block locations from the blockManager if not known
       if (uc.getNumExpectedLocations() == 0) {
-        uc.setExpectedLocations(blockManager.getStorages(lastBlock));
+        uc.setExpectedLocations(lastBlock,
+            blockManager.getStorages(lastBlock));
       }
 
-      if (uc.getNumExpectedLocations() == 0 && uc.getNumBytes() == 0) {
+      if (uc.getNumExpectedLocations() == 0 && lastBlock.getNumBytes() == 0) {
         // There is no datanode reported to this block.
         // may be client have crashed before writing data to pipeline.
         // This blocks doesn't need any recovery.
@@ -3099,14 +3120,15 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
         return true;
       }
       // start recovery of the last block for this file
-      long blockRecoveryId = nextGenerationStamp(blockIdManager.isLegacyBlock(uc));
+      long blockRecoveryId = nextGenerationStamp(
+          blockIdManager.isLegacyBlock(lastBlock));
       lease = reassignLease(lease, src, recoveryLeaseHolder, pendingFile);
       if(copyOnTruncate) {
-        uc.setGenerationStamp(blockRecoveryId);
+        lastBlock.setGenerationStamp(blockRecoveryId);
       } else if(truncateRecovery) {
         recoveryBlock.setGenerationStamp(blockRecoveryId);
       }
-      uc.initializeBlockRecovery(blockRecoveryId);
+      uc.initializeBlockRecovery(lastBlock, blockRecoveryId);
       leaseManager.renewLease(lease);
       // Cannot close file right now, since the last block requires recovery.
       // This may potentially cause infinite loop in lease recovery
@@ -3185,7 +3207,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
   }
   
   @Override
-  public boolean isInSnapshot(BlockInfoUnderConstruction blockUC) {
+  public boolean isInSnapshot(BlockInfo blockUC) {
     assert hasReadLock();
     final BlockCollection bc = blockUC.getBlockCollection();
     if (bc == null || !(bc instanceof INodeFile)
@@ -3232,7 +3254,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     waitForLoadingFSImage();
     writeLock();
     boolean copyTruncate = false;
-    BlockInfoUnderConstruction truncatedBlock = null;
+    BlockInfo truncatedBlock = null;
     try {
       checkOperation(OperationCategory.WRITE);
       // If a DN tries to commit to the standby, the recovery will
@@ -3289,9 +3311,9 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
         return;
       }
 
-      truncatedBlock = (BlockInfoUnderConstruction) iFile
-          .getLastBlock();
-      long recoveryId = truncatedBlock.getBlockRecoveryId();
+      truncatedBlock = iFile.getLastBlock();
+      long recoveryId = truncatedBlock.getUnderConstructionFeature()
+          .getBlockRecoveryId();
       copyTruncate = truncatedBlock.getBlockId() != storedBlock.getBlockId();
       if(recoveryId != newgenerationstamp) {
         throw new IOException("The recovery id " + newgenerationstamp
@@ -3340,9 +3362,9 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
                 trimmedTargets.get(i).getStorageInfo(trimmedStorages.get(i));
             if (storageInfo != null) {
               if(copyTruncate) {
-                storageInfo.addBlock(truncatedBlock, truncatedBlock);
+                storageInfo.addBlock(truncatedBlock);
               } else {
-                storageInfo.addBlock(storedBlock, storedBlock);
+                storageInfo.addBlock(storedBlock);
               }
             }
           }
@@ -3354,13 +3376,12 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
                 trimmedTargets.toArray(new DatanodeID[trimmedTargets.size()]),
                 trimmedStorages.toArray(new String[trimmedStorages.size()]));
         if(copyTruncate) {
-          iFile.setLastBlock(truncatedBlock, trimmedStorageInfos);
+          iFile.convertLastBlockToUC(truncatedBlock, trimmedStorageInfos);
         } else {
-          iFile.setLastBlock(storedBlock, trimmedStorageInfos);
+          iFile.convertLastBlockToUC(storedBlock, trimmedStorageInfos);
           if (closeFile) {
-            blockManager.markBlockReplicasAsCorrupt(oldBlock.getLocalBlock(),
-                storedBlock, oldGenerationStamp, oldNumBytes,
-                trimmedStorageInfos);
+            blockManager.markBlockReplicasAsCorrupt(storedBlock,
+                oldGenerationStamp, oldNumBytes, trimmedStorageInfos);
           }
         }
       }
@@ -3770,14 +3791,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     // not locking
     return blockManager.getMissingReplOneBlocksCount();
   }
-
-  @Metric({"TimeOfTheOldestBlockToBeReplicated",
-      "The timestamp of the oldest block to be replicated. If there are no" +
-      "under-replicated or corrupt blocks, return 0."})
-  public long getTimeOfTheOldestBlockToBeReplicated() {
-    return blockManager.getTimeOfTheOldestBlockToBeReplicated();
-  }
-
+  
   @Metric({"ExpiredHeartbeats", "Number of expired heartbeats"})
   public int getExpiredHeartbeats() {
     return datanodeStatistics.getExpiredHeartbeats();
@@ -3897,6 +3911,21 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
   @Metric({ "NumEncryptionZones", "The number of encryption zones" })
   public int getNumEncryptionZones() {
     return dir.ezManager.getNumEncryptionZones();
+  }
+
+  /**
+   * Returns the length of the wait Queue for the FSNameSystemLock.
+   *
+   * A larger number here indicates lots of threads are waiting for
+   * FSNameSystemLock.
+   *
+   * @return int - Number of Threads waiting to acquire FSNameSystemLock
+   */
+  @Override
+  @Metric({"LockQueueLength", "Number of threads waiting to " +
+      "acquire FSNameSystemLock"})
+  public int getFsLockQueueLength() {
+    return fsLock.getQueueLength();
   }
 
   int getNumberOfDatanodes(DatanodeReportType type) {
@@ -4675,12 +4704,12 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
   /**
    * Set the total number of blocks in the system. 
    */
-  public void setBlockTotal() {
+  public void setBlockTotal(long completeBlocksTotal) {
     // safeMode is volatile, and may be set to null at any time
     SafeModeInfo safeMode = this.safeMode;
     if (safeMode == null)
       return;
-    safeMode.setBlockTotal((int) getCompleteBlocksTotal());
+    safeMode.setBlockTotal((int) completeBlocksTotal);
   }
 
   /**
@@ -4712,13 +4741,14 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
   /**
    * Get the total number of COMPLETE blocks in the system.
    * For safe mode only complete blocks are counted.
+   * This is invoked only during NN startup and checkpointing.
    */
-  private long getCompleteBlocksTotal() {
+  public long getCompleteBlocksTotal() {
     // Calculate number of blocks under construction
     long numUCBlocks = 0;
     readLock();
-    numUCBlocks = leaseManager.getNumUnderConstructionBlocks();
     try {
+      numUCBlocks = leaseManager.getNumUnderConstructionBlocks();
       return getBlocksTotal() - numUCBlocks;
     } finally {
       readUnlock();
@@ -5323,8 +5353,8 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     assert hasWriteLock();
     // check the vadility of the block and lease holder name
     final INodeFile pendingFile = checkUCBlock(oldBlock, clientName);
-    final BlockInfoUnderConstruction blockinfo
-        = (BlockInfoUnderConstruction)pendingFile.getLastBlock();
+    final BlockInfo blockinfo = pendingFile.getLastBlock();
+    assert !blockinfo.isComplete();
 
     // check new GS & length: this is not expected
     if (newBlock.getGenerationStamp() <= blockinfo.getGenerationStamp() ||
@@ -5343,7 +5373,8 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     // find the DatanodeDescriptor objects
     final DatanodeStorageInfo[] storages = blockManager.getDatanodeManager()
         .getDatanodeStorageInfos(newNodes, newStorageIDs);
-    blockinfo.setExpectedLocations(storages);
+    blockinfo.getUnderConstructionFeature().setExpectedLocations(
+        blockinfo, storages);
 
     String src = pendingFile.getFullPathName();
     FSDirWriteFileOp.persistBlocks(dir, src, pendingFile, logRetryCache);
@@ -6006,6 +6037,12 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
         new HashMap<String, Map<String,Object>>();
     final List<DatanodeDescriptor> live = new ArrayList<DatanodeDescriptor>();
     blockManager.getDatanodeManager().fetchDatanodes(live, null, true);
+    for (Iterator<DatanodeDescriptor> it = live.iterator(); it.hasNext();) {
+      DatanodeDescriptor node = it.next();
+      if (node.isDecommissionInProgress() || node.isDecommissioned()) {
+        it.remove();
+      }
+    }
 
     if (live.size() > 0) {
       float totalDfsUsed = 0;
@@ -7241,5 +7278,29 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     }
   }
 
+  /**
+   * Return total number of Sync Operations on FSEditLog.
+   */
+  @Override
+  @Metric({"TotalSyncCount",
+              "Total number of sync operations performed on edit logs"})
+  public long getTotalSyncCount() {
+    return fsImage.editLog.getTotalSyncCount();
+  }
+
+  /**
+   * Return total time spent doing sync operations on FSEditLog.
+   */
+  @Override
+  @Metric({"TotalSyncTimes",
+              "Total time spend in sync operation on various edit logs"})
+  public String getTotalSyncTimes() {
+    JournalSet journalSet = fsImage.editLog.getJournalSet();
+    if (journalSet != null) {
+      return journalSet.getSyncTimes();
+    } else {
+      return "";
+    }
+  }
 }
 

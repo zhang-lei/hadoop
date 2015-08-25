@@ -110,7 +110,6 @@ import org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.BlockOpResponseP
 import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
 import org.apache.hadoop.hdfs.security.token.block.ExportedBlockKeys;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockManager;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockManagerTestUtil;
 import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeDescriptor;
@@ -1253,7 +1252,7 @@ public class DFSTestUtil {
     s2.close();
     // OP_SET_STORAGE_POLICY 45
     filesystem.setStoragePolicy(pathFileCreate,
-        HdfsServerConstants.HOT_STORAGE_POLICY_NAME);
+        HdfsConstants.HOT_STORAGE_POLICY_NAME);
     // OP_RENAME_OLD 1
     final Path pathFileMoved = new Path("/file_moved");
     filesystem.rename(pathFileCreate, pathFileMoved);
@@ -1636,13 +1635,11 @@ public class DFSTestUtil {
     BlockManager bm0 = nn.getNamesystem().getBlockManager();
     BlockInfo storedBlock = bm0.getStoredBlock(blk.getLocalBlock());
     assertTrue("Block " + blk + " should be under construction, " +
-        "got: " + storedBlock,
-        storedBlock instanceof BlockInfoUnderConstruction);
-    BlockInfoUnderConstruction ucBlock =
-      (BlockInfoUnderConstruction)storedBlock;
+        "got: " + storedBlock, !storedBlock.isComplete());
     // We expect that the replica with the most recent heart beat will be
     // the one to be in charge of the synchronization / recovery protocol.
-    final DatanodeStorageInfo[] storages = ucBlock.getExpectedStorageLocations();
+    final DatanodeStorageInfo[] storages = storedBlock
+        .getUnderConstructionFeature().getExpectedStorageLocations();
     DatanodeStorageInfo expectedPrimary = storages[0];
     long mostRecentLastUpdate = expectedPrimary.getDatanodeDescriptor()
         .getLastUpdateMonotonic();

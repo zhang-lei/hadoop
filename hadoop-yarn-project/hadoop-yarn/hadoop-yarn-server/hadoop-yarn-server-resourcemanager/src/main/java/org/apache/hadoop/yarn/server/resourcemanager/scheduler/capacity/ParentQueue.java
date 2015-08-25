@@ -384,7 +384,7 @@ public class ParentQueue extends AbstractCSQueue {
     // if our queue cannot access this node, just return
     if (schedulingMode == SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY
         && !accessibleToPartition(node.getPartition())) {
-      return NULL_ASSIGNMENT;
+      return CSAssignment.NULL_ASSIGNMENT;
     }
     
     // Check if this queue need more resource, simply skip allocation if this
@@ -396,7 +396,7 @@ public class ParentQueue extends AbstractCSQueue {
             + ", because it doesn't need more resource, schedulingMode="
             + schedulingMode.name() + " node-partition=" + node.getPartition());
       }
-      return NULL_ASSIGNMENT;
+      return CSAssignment.NULL_ASSIGNMENT;
     }
     
     CSAssignment assignment = 
@@ -629,12 +629,9 @@ public class ParentQueue extends AbstractCSQueue {
         super.releaseResource(clusterResource, rmContainer.getContainer()
             .getResource(), node.getPartition());
 
-        LOG.info("completedContainer" +
-            " queue=" + getQueueName() + 
-            " usedCapacity=" + getUsedCapacity() +
-            " absoluteUsedCapacity=" + getAbsoluteUsedCapacity() +
-            " used=" + queueUsage.getUsed() + 
-            " cluster=" + clusterResource);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("completedContainer " + this + ", cluster=" + clusterResource);
+        }
 
         // Note that this is using an iterator on the childQueues so this can't
         // be called if already within an iterator for the childQueues. Like
@@ -646,8 +643,9 @@ public class ParentQueue extends AbstractCSQueue {
             CSQueue csqueue = iter.next();
             if(csqueue.equals(completedChildQueue)) {
               iter.remove();
-              LOG.info("Re-sorting completed queue: " + csqueue.getQueuePath() +
-                  " stats: " + csqueue);
+              if (LOG.isDebugEnabled()) {
+                LOG.debug("Re-sorting completed queue: " + csqueue);
+              }
               childQueues.add(csqueue);
               break;
             }

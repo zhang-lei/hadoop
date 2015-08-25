@@ -55,12 +55,6 @@ public interface BlockCollection {
   public long getPreferredBlockSize();
 
   /**
-   * Get block replication for the collection 
-   * @return block replication value
-   */
-  public short getPreferredBlockReplication();
-
-  /** 
    * @return the storage policy ID.
    */
   public byte getStoragePolicyID();
@@ -79,8 +73,7 @@ public interface BlockCollection {
    * Convert the last block of the collection to an under-construction block
    * and set the locations.
    */
-  public BlockInfoUnderConstruction setLastBlock(BlockInfo lastBlock,
-      DatanodeStorageInfo[] targets) throws IOException;
+  public void convertLastBlockToUC(BlockInfo lastBlock, DatanodeStorageInfo[] targets) throws IOException;
 
   /**
    * @return whether the block collection is under construction.

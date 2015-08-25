@@ -167,6 +167,7 @@ public class AppBlock extends HtmlBlock {
       ._("Application Type:", app.getType())
       ._("Application Tags:",
         app.getApplicationTags() == null ? "" : app.getApplicationTags())
+      ._("Application Priority:", clarifyAppPriority(app.getPriority()))
       ._(
         "YarnApplicationState:",
         app.getAppState() == null ? UNAVAILABLE : clarifyAppState(app
@@ -194,18 +195,19 @@ public class AppBlock extends HtmlBlock {
         && webUiType.equals(YarnWebParams.RM_WEB_UI)) {
       LogAggregationStatus status = getLogAggregationStatus();
       if (status == null) {
-        overviewTable._("Log Aggregation Status", "N/A");
+        overviewTable._("Log Aggregation Status:", "N/A");
       } else if (status == LogAggregationStatus.DISABLED
           || status == LogAggregationStatus.NOT_START
           || status == LogAggregationStatus.SUCCEEDED) {
-        overviewTable._("Log Aggregation Status", status.name());
+        overviewTable._("Log Aggregation Status:", status.name());
       } else {
-        overviewTable._("Log Aggregation Status",
+        overviewTable._("Log Aggregation Status:",
             root_url("logaggregationstatus", app.getAppId()), status.name());
       }
     }
     overviewTable._("Diagnostics:",
         app.getDiagnosticsInfo() == null ? "" : app.getDiagnosticsInfo());
+    overviewTable._("Unmanaged Application:", app.isUnmanagedApp());
 
     Collection<ApplicationAttemptReport> attempts;
     try {
@@ -266,11 +268,13 @@ public class AppBlock extends HtmlBlock {
             @Override
             public ContainerReport run() throws Exception {
               ContainerReport report = null;
-              try {
-                report = appBaseProt.getContainerReport(request)
-                    .getContainerReport();
-              } catch (ContainerNotFoundException ex) {
-                LOG.warn(ex.getMessage());
+              if (request.getContainerId() != null) {
+                  try {
+                    report = appBaseProt.getContainerReport(request)
+                        .getContainerReport();
+                  } catch (ContainerNotFoundException ex) {
+                    LOG.warn(ex.getMessage());
+                  }
               }
               return report;
             }
@@ -337,6 +341,10 @@ public class AppBlock extends HtmlBlock {
     default:
       return ret;
     }
+  }
+
+  private String clarifyAppPriority(int priority) {
+    return priority + " (Higher Integer value indicates higher priority)";
   }
 
   private String clairfyAppFinalStatus(FinalApplicationStatus status) {

@@ -28,9 +28,9 @@ import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
 import org.apache.hadoop.hdfs.protocol.QuotaExceededException;
 import org.apache.hadoop.hdfs.protocol.SnapshotAccessControlException;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstructionContiguous;
+import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguous;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockManager;
+import org.apache.hadoop.hdfs.server.blockmanagement.BlockUnderConstructionFeature;
 import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.BlockUCState;
 import org.apache.hadoop.hdfs.server.namenode.FSNamesystem.RecoverLeaseOp;
 import org.apache.hadoop.hdfs.server.namenode.INode.BlocksMapUpdateInfo;
@@ -96,7 +96,7 @@ final class FSDirTruncateOp {
       final BlockInfo last = file.getLastBlock();
       if (last != null && last.getBlockUCState()
           == BlockUCState.UNDER_RECOVERY) {
-        final Block truncatedBlock = ((BlockInfoUnderConstruction) last)
+        final Block truncatedBlock = last.getUnderConstructionFeature()
             .getTruncateBlock();
         if (truncatedBlock != null) {
           final long truncateLength = file.computeFileSize(false, false)
@@ -223,42 +223,42 @@ final class FSDirTruncateOp {
               oldBlock)));
     }
 
-    BlockInfoUnderConstruction truncatedBlockUC;
+    final BlockInfo truncatedBlockUC;
     BlockManager blockManager = fsn.getFSDirectory().getBlockManager();
     if (shouldCopyOnTruncate) {
       // Add new truncateBlock into blocksMap and
       // use oldBlock as a source for copy-on-truncate recovery
-      truncatedBlockUC = new BlockInfoUnderConstructionContiguous(newBlock,
+      truncatedBlockUC = new BlockInfoContiguous(newBlock,
           file.getPreferredBlockReplication());
+      truncatedBlockUC.convertToBlockUnderConstruction(
+          BlockUCState.UNDER_CONSTRUCTION, blockManager.getStorages(oldBlock));
       truncatedBlockUC.setNumBytes(oldBlock.getNumBytes() - lastBlockDelta);
-      truncatedBlockUC.setTruncateBlock(oldBlock);
-      file.setLastBlock(truncatedBlockUC, blockManager.getStorages(oldBlock));
+      truncatedBlockUC.getUnderConstructionFeature().setTruncateBlock(oldBlock);
+      file.setLastBlock(truncatedBlockUC);
       blockManager.addBlockCollection(truncatedBlockUC, file);
 
       NameNode.stateChangeLog.debug(
           "BLOCK* prepareFileForTruncate: Scheduling copy-on-truncate to new"
               + " size {}  new block {} old block {}",
-          truncatedBlockUC.getNumBytes(), newBlock,
-          truncatedBlockUC.getTruncateBlock());
+          truncatedBlockUC.getNumBytes(), newBlock, oldBlock);
     } else {
       // Use new generation stamp for in-place truncate recovery
       blockManager.convertLastBlockToUnderConstruction(file, lastBlockDelta);
       oldBlock = file.getLastBlock();
       assert !oldBlock.isComplete() : "oldBlock should be under construction";
-      truncatedBlockUC = (BlockInfoUnderConstruction) oldBlock;
-      truncatedBlockUC.setTruncateBlock(new Block(oldBlock));
-      truncatedBlockUC.getTruncateBlock().setNumBytes(
-          oldBlock.getNumBytes() - lastBlockDelta);
-      truncatedBlockUC.getTruncateBlock().setGenerationStamp(
-          newBlock.getGenerationStamp());
+      BlockUnderConstructionFeature uc = oldBlock.getUnderConstructionFeature();
+      uc.setTruncateBlock(new Block(oldBlock));
+      uc.getTruncateBlock().setNumBytes(oldBlock.getNumBytes() - lastBlockDelta);
+      uc.getTruncateBlock().setGenerationStamp(newBlock.getGenerationStamp());
+      truncatedBlockUC = oldBlock;
 
-      NameNode.stateChangeLog.debug(
-          "BLOCK* prepareFileForTruncate: {} Scheduling in-place block "
-              + "truncate to new size {}", truncatedBlockUC.getTruncateBlock()
-              .getNumBytes(), truncatedBlockUC);
+      NameNode.stateChangeLog.debug("BLOCK* prepareFileForTruncate: " +
+          "{} Scheduling in-place block truncate to new size {}",
+          uc, uc.getTruncateBlock().getNumBytes());
     }
     if (shouldRecoverNow) {
-      truncatedBlockUC.initializeBlockRecovery(newBlock.getGenerationStamp());
+      truncatedBlockUC.getUnderConstructionFeature().initializeBlockRecovery(
+          truncatedBlockUC, newBlock.getGenerationStamp());
     }
 
     return newBlock;

@@ -99,9 +99,6 @@ public interface HdfsServerConstants {
   };
   byte[] DOT_SNAPSHOT_DIR_BYTES
               = DFSUtil.string2Bytes(HdfsConstants.DOT_SNAPSHOT_DIR);
-  String HOT_STORAGE_POLICY_NAME = "HOT";
-  String WARM_STORAGE_POLICY_NAME = "WARM";
-  String COLD_STORAGE_POLICY_NAME = "COLD";
   byte MEMORY_STORAGE_POLICY_ID = 15;
   byte ALLSSD_STORAGE_POLICY_ID = 12;
   byte ONESSD_STORAGE_POLICY_ID = 10;
@@ -289,12 +286,6 @@ public interface HdfsServerConstants {
       }
     }
   }
-
-  // Timeouts for communicating with DataNode for streaming writes/reads
-  int READ_TIMEOUT = 60 * 1000;
-  int READ_TIMEOUT_EXTENSION = 5 * 1000;
-  int WRITE_TIMEOUT = 8 * 60 * 1000;
-  int WRITE_TIMEOUT_EXTENSION = 5 * 1000; //for write pipeline
 
   /**
    * Defines the NameNode role.

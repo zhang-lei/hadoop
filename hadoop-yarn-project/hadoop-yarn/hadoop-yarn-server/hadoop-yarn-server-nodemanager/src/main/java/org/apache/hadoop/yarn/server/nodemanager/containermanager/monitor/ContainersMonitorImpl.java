@@ -73,6 +73,7 @@ public class ContainersMonitorImpl extends AbstractService implements
 
   private boolean pmemCheckEnabled;
   private boolean vmemCheckEnabled;
+  private boolean containersMonitorEnabled;
 
   private long maxVCoresAllottedForContainers;
 
@@ -100,10 +101,14 @@ public class ContainersMonitorImpl extends AbstractService implements
   protected void serviceInit(Configuration conf) throws Exception {
     this.monitoringInterval =
         conf.getLong(YarnConfiguration.NM_CONTAINER_MON_INTERVAL_MS,
-            YarnConfiguration.DEFAULT_NM_CONTAINER_MON_INTERVAL_MS);
+            conf.getLong(YarnConfiguration.NM_RESOURCE_MON_INTERVAL_MS,
+                YarnConfiguration.DEFAULT_NM_RESOURCE_MON_INTERVAL_MS));
 
     Class<? extends ResourceCalculatorPlugin> clazz =
-        conf.getClass(YarnConfiguration.NM_CONTAINER_MON_RESOURCE_CALCULATOR, null,
+        conf.getClass(YarnConfiguration.NM_CONTAINER_MON_RESOURCE_CALCULATOR,
+            conf.getClass(
+                YarnConfiguration.NM_MON_RESOURCE_CALCULATOR, null,
+                ResourceCalculatorPlugin.class),
             ResourceCalculatorPlugin.class);
     this.resourceCalculatorPlugin =
         ResourceCalculatorPlugin.getResourceCalculatorPlugin(clazz, conf);
@@ -148,6 +153,9 @@ public class ContainersMonitorImpl extends AbstractService implements
         YarnConfiguration.DEFAULT_NM_VMEM_CHECK_ENABLED);
     LOG.info("Physical memory check enabled: " + pmemCheckEnabled);
     LOG.info("Virtual memory check enabled: " + vmemCheckEnabled);
+
+    containersMonitorEnabled = isEnabled();
+    LOG.info("ContainersMonitor enabled: " + containersMonitorEnabled);
 
     nodeCpuPercentageForYARN =
         NodeManagerHardwareUtils.getNodeCpuPercentage(conf);
@@ -201,7 +209,7 @@ public class ContainersMonitorImpl extends AbstractService implements
 
   @Override
   protected void serviceStart() throws Exception {
-    if (this.isEnabled()) {
+    if (containersMonitorEnabled) {
       this.monitoringThread.start();
     }
     super.serviceStart();
@@ -209,7 +217,7 @@ public class ContainersMonitorImpl extends AbstractService implements
 
   @Override
   protected void serviceStop() throws Exception {
-    if (this.isEnabled()) {
+    if (containersMonitorEnabled) {
       this.monitoringThread.interrupt();
       try {
         this.monitoringThread.join();
@@ -644,7 +652,7 @@ public class ContainersMonitorImpl extends AbstractService implements
   @Override
   public void handle(ContainersMonitorEvent monitoringEvent) {
 
-    if (!isEnabled()) {
+    if (!containersMonitorEnabled) {
       return;
     }
 

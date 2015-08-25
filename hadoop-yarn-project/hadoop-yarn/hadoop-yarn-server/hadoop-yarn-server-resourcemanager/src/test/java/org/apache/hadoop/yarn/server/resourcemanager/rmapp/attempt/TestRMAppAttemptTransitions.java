@@ -258,14 +258,14 @@ public class TestRMAppAttemptTransitions {
           null, amRMTokenManager,
           new RMContainerTokenSecretManager(conf),
           nmTokenManager,
-          clientToAMTokenManager,
-          writer);
+          clientToAMTokenManager);
     
     store = mock(RMStateStore.class);
     ((RMContextImpl) rmContext).setStateStore(store);
     publisher = mock(SystemMetricsPublisher.class);
-    ((RMContextImpl) rmContext).setSystemMetricsPublisher(publisher);
-    
+    rmContext.setSystemMetricsPublisher(publisher);
+    rmContext.setRMApplicationHistoryWriter(writer);
+
     scheduler = mock(YarnScheduler.class);
     masterService = mock(ApplicationMasterService.class);
     applicationMasterLauncher = mock(ApplicationMasterLauncher.class);
@@ -1391,6 +1391,38 @@ public class TestRMAppAttemptTransitions {
     Assert.assertNull(token);
     token = applicationAttempt.createClientToken("clientuser");
     Assert.assertNull(token);
+  }
+
+  // this is to test master key is saved in the secret manager only after
+  // attempt is launched and in secure-mode
+  @Test
+  public void testApplicationAttemptMasterKey() throws Exception {
+    Container amContainer = allocateApplicationAttempt();
+    ApplicationAttemptId appid = applicationAttempt.getAppAttemptId();
+    boolean isMasterKeyExisted = false;
+
+    // before attempt is launched, can not get MasterKey
+    isMasterKeyExisted = clientToAMTokenManager.hasMasterKey(appid);
+    Assert.assertFalse(isMasterKeyExisted);
+
+    launchApplicationAttempt(amContainer);
+    // after attempt is launched and in secure mode, can get MasterKey
+    isMasterKeyExisted = clientToAMTokenManager.hasMasterKey(appid);
+    if (isSecurityEnabled) {
+      Assert.assertTrue(isMasterKeyExisted);
+      Assert.assertNotNull(clientToAMTokenManager.getMasterKey(appid));
+    } else {
+      Assert.assertFalse(isMasterKeyExisted);
+    }
+
+    applicationAttempt.handle(new RMAppAttemptEvent(applicationAttempt
+      .getAppAttemptId(), RMAppAttemptEventType.KILL));
+    assertEquals(YarnApplicationAttemptState.LAUNCHED,
+        applicationAttempt.createApplicationAttemptState());
+    sendAttemptUpdateSavedEvent(applicationAttempt);
+    // after attempt is killed, can not get MasterKey
+    isMasterKeyExisted = clientToAMTokenManager.hasMasterKey(appid);
+    Assert.assertFalse(isMasterKeyExisted);
   }
 
   @Test

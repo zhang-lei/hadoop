@@ -42,10 +42,11 @@ import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.BlockProto;
 import org.apache.hadoop.hdfs.protocolPB.PBHelper;
+import org.apache.hadoop.hdfs.protocolPB.PBHelperClient;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguous;
-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstructionContiguous;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockManager;
+import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
 import org.apache.hadoop.hdfs.server.namenode.FSImageFormatProtobuf.LoaderContext;
 import org.apache.hadoop.hdfs.server.namenode.FSImageFormatProtobuf.SaverContext;
 import org.apache.hadoop.hdfs.server.namenode.FsImageProto.FileSummary;
@@ -130,9 +131,9 @@ public final class FSImageFormatPBINode {
       return b.build();
     }
     
-    public static ImmutableList<XAttr> loadXAttrs(
+    public static List<XAttr> loadXAttrs(
         XAttrFeatureProto proto, final String[] stringTable) {
-      ImmutableList.Builder<XAttr> b = ImmutableList.builder();
+      List<XAttr> b = new ArrayList<>();
       for (XAttrCompactProto xAttrCompactProto : proto.getXAttrsList()) {
         int v = xAttrCompactProto.getName();
         int nid = (v >> XATTR_NAME_OFFSET) & XATTR_NAME_MASK;
@@ -148,14 +149,14 @@ public final class FSImageFormatPBINode {
             .setName(name).setValue(value).build());
       }
       
-      return b.build();
+      return b;
     }
 
     public static ImmutableList<QuotaByStorageTypeEntry> loadQuotaByStorageTypeEntries(
       QuotaByStorageTypeFeatureProto proto) {
       ImmutableList.Builder<QuotaByStorageTypeEntry> b = ImmutableList.builder();
       for (QuotaByStorageTypeEntryProto quotaEntry : proto.getQuotasList()) {
-        StorageType type = PBHelper.convertStorageType(quotaEntry.getStorageType());
+        StorageType type = PBHelperClient.convertStorageType(quotaEntry.getStorageType());
         long quota = quotaEntry.getQuota();
         b.add(new QuotaByStorageTypeEntry.Builder().setStorageType(type)
             .setQuota(quota).build());
@@ -363,9 +364,8 @@ public final class FSImageFormatPBINode {
         file.toUnderConstruction(uc.getClientName(), uc.getClientMachine());
         if (blocks.length > 0) {
           BlockInfo lastBlk = file.getLastBlock();
-          // replace the last block of file
-          file.setBlock(file.numBlocks() - 1,
-              new BlockInfoUnderConstructionContiguous(lastBlk, replication));
+          lastBlk.convertToBlockUnderConstruction(
+              HdfsServerConstants.BlockUCState.UNDER_CONSTRUCTION, null);
         }
       }
       return file;
@@ -463,7 +463,7 @@ public final class FSImageFormatPBINode {
         if (q.getTypeSpace(t) >= 0) {
           QuotaByStorageTypeEntryProto.Builder eb =
               QuotaByStorageTypeEntryProto.newBuilder().
-              setStorageType(PBHelper.convertStorageType(t)).
+              setStorageType(PBHelperClient.convertStorageType(t)).
               setQuota(q.getTypeSpace(t));
           b.addQuotas(eb);
         }

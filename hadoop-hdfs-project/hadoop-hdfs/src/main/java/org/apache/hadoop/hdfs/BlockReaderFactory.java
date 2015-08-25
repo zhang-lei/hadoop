@@ -24,8 +24,12 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.net.InetSocketAddress;
+import java.util.List;
 
+import com.google.common.io.ByteArrayDataOutput;
+import com.google.common.io.ByteStreams;
 import org.apache.commons.lang.mutable.MutableBoolean;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -41,7 +45,7 @@ import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.protocol.datatransfer.InvalidEncryptionKeyException;
 import org.apache.hadoop.hdfs.protocol.datatransfer.Sender;
 import org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.BlockOpResponseProto;
-import org.apache.hadoop.hdfs.protocolPB.PBHelper;
+import org.apache.hadoop.hdfs.protocolPB.PBHelperClient;
 import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
 import org.apache.hadoop.hdfs.security.token.block.InvalidBlockTokenException;
 import org.apache.hadoop.hdfs.server.datanode.CachingStrategy;
@@ -52,6 +56,7 @@ import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitReplica;
 import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitReplicaInfo;
 import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm.Slot;
 import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm.SlotId;
+import org.apache.hadoop.io.ByteWritable;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.ipc.RemoteException;
 import org.apache.hadoop.net.unix.DomainSocket;
@@ -91,7 +96,7 @@ public class BlockReaderFactory implements ShortCircuitReplicaCreator {
   /**
    * Injects failures into specific operations during unit tests.
    */
-  private final FailureInjector failureInjector;
+  private static FailureInjector failureInjector = new FailureInjector();
 
   /**
    * The file name, for logging and debugging purposes.
@@ -187,7 +192,6 @@ public class BlockReaderFactory implements ShortCircuitReplicaCreator {
 
   public BlockReaderFactory(DfsClientConf conf) {
     this.conf = conf;
-    this.failureInjector = conf.getShortCircuitConf().brfFailureInjector;
     this.remainingCacheTries = conf.getNumCachedConnRetry();
   }
 
@@ -278,6 +282,11 @@ public class BlockReaderFactory implements ShortCircuitReplicaCreator {
     return this;
   }
 
+  @VisibleForTesting
+  public static void setFailureInjectorForTesting(FailureInjector injector) {
+    failureInjector = injector;
+  }
+
   /**
    * Build a BlockReader with the given options.
    *
@@ -322,6 +331,10 @@ public class BlockReaderFactory implements ShortCircuitReplicaCreator {
     BlockReader reader = null;
 
     Preconditions.checkNotNull(configuration);
+    reader = tryToCreateExternalBlockReader();
+    if (reader != null) {
+      return reader;
+    }
     final ShortCircuitConf scConf = conf.getShortCircuitConf();
     if (scConf.isShortCircuitLocalReads() && allowShortCircuitLocalReads) {
       if (clientContext.getUseLegacyBlockReaderLocal()) {
@@ -357,6 +370,45 @@ public class BlockReaderFactory implements ShortCircuitReplicaCreator {
         "do a non-TCP read.");
     return getRemoteBlockReaderFromTcp();
   }
+
+  private BlockReader tryToCreateExternalBlockReader() {
+    List<Class<? extends ReplicaAccessorBuilder>> clses =
+        conf.getReplicaAccessorBuilderClasses();
+    for (Class<? extends ReplicaAccessorBuilder> cls : clses) {
+      try {
+        ByteArrayDataOutput bado = ByteStreams.newDataOutput();
+        token.write(bado);
+        byte tokenBytes[] = bado.toByteArray();
+
+        Constructor<? extends ReplicaAccessorBuilder> ctor =
+            cls.getConstructor();
+        ReplicaAccessorBuilder builder = ctor.newInstance();
+        ReplicaAccessor accessor = builder.
+            setAllowShortCircuitReads(allowShortCircuitLocalReads).
+            setBlock(block.getBlockId(), block.getBlockPoolId()).
+            setBlockAccessToken(tokenBytes).
+            setClientName(clientName).
+            setConfiguration(configuration).
+            setFileName(fileName).
+            setVerifyChecksum(verifyChecksum).
+            setVisibleLength(length).
+            build();
+        if (accessor == null) {
+          if (LOG.isTraceEnabled()) {
+            LOG.trace(this + ": No ReplicaAccessor created by " +
+                cls.getName());
+          }
+        } else {
+          return new ExternalBlockReader(accessor, length, startOffset);
+        }
+      } catch (Throwable t) {
+        LOG.warn("Failed to construct new object of type " +
+            cls.getName(), t);
+      }
+    }
+    return null;
+  }
+
 
   /**
    * Get {@link BlockReaderLocalLegacy} for short circuited local reads.
@@ -540,7 +592,7 @@ public class BlockReaderFactory implements ShortCircuitReplicaCreator {
         failureInjector.getSupportsReceiptVerification());
     DataInputStream in = new DataInputStream(peer.getInputStream());
     BlockOpResponseProto resp = BlockOpResponseProto.parseFrom(
-        PBHelper.vintPrefixed(in));
+        PBHelperClient.vintPrefixed(in));
     DomainSocket sock = peer.getDomainSocket();
     failureInjector.injectRequestFileDescriptorsFailure();
     switch (resp.getStatus()) {

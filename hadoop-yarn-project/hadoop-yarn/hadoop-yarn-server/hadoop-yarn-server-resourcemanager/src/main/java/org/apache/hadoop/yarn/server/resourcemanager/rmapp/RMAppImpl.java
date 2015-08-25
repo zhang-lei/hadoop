@@ -660,11 +660,12 @@ public class RMAppImpl implements RMApp, Recoverable {
       ApplicationReport report = BuilderUtils.newApplicationReport(
           this.applicationId, currentApplicationAttemptId, this.user,
           this.queue, this.name, host, rpcPort, clientToAMToken,
-          createApplicationState(), diags,
-          trackingUrl, this.startTime, this.finishTime, finishState,
-          appUsageReport, origTrackingUrl, progress, this.applicationType, 
-          amrmToken, applicationTags);
+          createApplicationState(), diags, trackingUrl, this.startTime,
+          this.finishTime, finishState, appUsageReport, origTrackingUrl,
+          progress, this.applicationType, amrmToken, applicationTags,
+          this.submissionContext.getPriority());
       report.setLogAggregationStatus(logAggregationStatus);
+      report.setUnmanagedApp(submissionContext.getUnmanagedAM());
       return report;
     } finally {
       this.readLock.unlock();
@@ -781,7 +782,8 @@ public class RMAppImpl implements RMApp, Recoverable {
     LOG.info("Recovering app: " + getApplicationId() + " with " + 
         + appState.getAttemptCount() + " attempts and final state = "
         + this.recoveredFinalState );
-    this.diagnostics.append(appState.getDiagnostics());
+    this.diagnostics.append(null == appState.getDiagnostics() ? "" : appState
+        .getDiagnostics());
     this.storedFinishTime = appState.getFinishTime();
     this.startTime = appState.getStartTime();
 

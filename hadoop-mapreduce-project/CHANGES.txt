@@ -206,6 +206,8 @@ Trunk (Unreleased)
     MAPREDUCE-6406. Update FileOutputCommitter.FILEOUTPUTCOMMITTER_ALGORITHM_VERSION_DEFAULT
     to match mapred-default.xml. (Ray Chiang via devaraj)
 
+    MAPREDUCE-6257. Document encrypted spills (Bibin A Chundatt via aw)
+
   BREAKDOWN OF MAPREDUCE-2841 (NATIVE TASK) SUBTASKS
 
     MAPREDUCE-5985. native-task: Fix build on macosx. Contributed by
@@ -272,6 +274,8 @@ Trunk (Unreleased)
 
     MAPREDUCE-5801. Uber mode's log message is missing a vcore reason
     (Steven Wong via aw)
+
+    MAPREDUCE-6455. Unable to use surefire > 2.18. (Charlie Helin via kasha)
 
 Release 2.8.0 - UNRELEASED
 
@@ -373,10 +377,16 @@ Release 2.8.0 - UNRELEASED
     MAPREDUCE-6384. Add the last reporting reducer info for too many fetch
     failure diagnostics (Chang Li via jlowe)
 
+    MAPREDUCE-6443. Add JvmPauseMonitor to JobHistoryServer. (Robert Kanter
+    via junping_du)
+
   OPTIMIZATIONS
 
     MAPREDUCE-6376. Add avro binary support for jhist files (Ray Chiang via
     jlowe)
+
+    MAPREDUCE-6394. Speed up Task processing loop in HsTasksBlock#render()
+    (Ray Chiang via jlowe)
 
   BUG FIXES
 
@@ -542,6 +552,15 @@ Release 2.8.0 - UNRELEASED
 
     MAPREDUCE-6427. Fix typo in JobHistoryEventHandler. (Ray Chiang via cdouglas)
 
+    MAPREDUCE-6433. launchTime may be negative. (Zhihai Xu)
+
+    MAPREDUCE-5817. Mappers get rescheduled on node transition even after all
+    reducers are completed. (Sangjin Lee via kasha)
+
+    MAPREDUCE-6357. MultipleOutputs.write() API should document that output
+    committing is not utilized when input path is absolute.
+    (Dustin Cote via aajisaka)
+
 Release 2.7.2 - UNRELEASED
 
   INCOMPATIBLE CHANGES
@@ -559,6 +578,9 @@ Release 2.7.2 - UNRELEASED
 
     MAPREDUCE-6426. TestShuffleHandler#testGetMapOutputInfo is failing.
     (zhihai xu via devaraj)
+
+    MAPREDUCE-6439. AM may fail instead of retrying if RM shuts down during the
+    allocate call. (Anubhav Dhoot via kasha)
 
 Release 2.7.1 - 2015-07-06 
 
@@ -800,6 +822,18 @@ Release 2.7.0 - 2015-04-20
 
     MAPREDUCE-6303. Read timeout when retrying a fetch error can be fatal 
     to a reducer. (Jason Lowe via junping_du)
+
+Release 2.6.2 - UNRELEASED
+
+  INCOMPATIBLE CHANGES
+
+  NEW FEATURES
+
+  IMPROVEMENTS
+
+  OPTIMIZATIONS
+
+  BUG FIXES
 
 Release 2.6.1 - UNRELEASED
 
