@@ -30,9 +30,9 @@ import java.util.Random;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.FsTracer;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.net.Peer;
-import org.apache.hadoop.hdfs.net.TcpPeerServer;
 import org.apache.hadoop.hdfs.protocol.DatanodeID;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
@@ -193,6 +193,7 @@ public class BlockReaderTestUtil {
       setCachingStrategy(CachingStrategy.newDefaultStrategy()).
       setConfiguration(fs.getConf()).
       setAllowShortCircuitLocalReads(true).
+      setTracer(FsTracer.get(fs.getConf())).
       setRemotePeerFactory(new RemotePeerFactory() {
         @Override
         public Peer newConnectedPeer(InetSocketAddress addr,
@@ -204,7 +205,7 @@ public class BlockReaderTestUtil {
           try {
             sock.connect(addr, HdfsConstants.READ_TIMEOUT);
             sock.setSoTimeout(HdfsConstants.READ_TIMEOUT);
-            peer = TcpPeerServer.peerFromSocket(sock);
+            peer = DFSUtilClient.peerFromSocket(sock);
           } finally {
             if (peer == null) {
               IOUtils.closeQuietly(sock);

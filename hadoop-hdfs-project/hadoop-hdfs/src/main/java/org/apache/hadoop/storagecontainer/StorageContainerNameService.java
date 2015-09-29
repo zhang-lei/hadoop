@@ -19,10 +19,12 @@
 package org.apache.hadoop.storagecontainer;
 
 import org.apache.hadoop.hdfs.protocol.Block;
+import org.apache.hadoop.hdfs.server.blockmanagement.BlockCollection;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
 import org.apache.hadoop.hdfs.server.namenode.CacheManager;
 import org.apache.hadoop.hdfs.server.namenode.NameNode;
 import org.apache.hadoop.hdfs.server.namenode.Namesystem;
+import org.apache.hadoop.hdfs.server.namenode.ha.HAContext;
 import org.apache.hadoop.ipc.StandbyException;
 import org.apache.hadoop.security.AccessControlException;
 
@@ -73,6 +75,11 @@ public class StorageContainerNameService implements Namesystem {
   }
 
   @Override
+  public BlockCollection getBlockCollection(long id) {
+    return null;
+  }
+
+  @Override
   public void adjustSafeModeBlockTotals(int deltaSafe, int deltaTotal) {
     // TBD
   }
@@ -92,6 +99,11 @@ public class StorageContainerNameService implements Namesystem {
   @Override
   public CacheManager getCacheManager() {
     // Cache Management is not supported
+    return null;
+  }
+
+  @Override
+  public HAContext getHAContext() {
     return null;
   }
 
@@ -145,10 +157,6 @@ public class StorageContainerNameService implements Namesystem {
     return false;
   }
 
-  @Override
-  public boolean isPopulatingReplQueues() {
-    return false;
-  }
 
   @Override
   public void incrementSafeBlockCount(int replication) {

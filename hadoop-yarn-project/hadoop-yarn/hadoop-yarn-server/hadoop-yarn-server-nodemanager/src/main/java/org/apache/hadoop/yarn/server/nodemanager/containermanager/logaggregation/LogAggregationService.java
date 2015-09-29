@@ -56,6 +56,7 @@ import org.apache.hadoop.yarn.server.nodemanager.DeletionService;
 import org.apache.hadoop.yarn.server.nodemanager.LocalDirsHandlerService;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.application.ApplicationEvent;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.application.ApplicationEventType;
+import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.Container;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.loghandler.LogHandler;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.loghandler.event.LogHandlerAppFinishedEvent;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.loghandler.event.LogHandlerAppStartedEvent;
@@ -363,18 +364,18 @@ public class LogAggregationService extends AbstractService implements
       throw new YarnRuntimeException("Duplicate initApp for " + appId);
     }
     // wait until check for existing aggregator to create dirs
+    YarnRuntimeException appDirException = null;
     try {
       // Create the app dir
       createAppDir(user, appId, userUgi);
     } catch (Exception e) {
-      appLogAggregators.remove(appId);
-      closeFileSystems(userUgi);
+      appLogAggregator.disableLogAggregation();
       if (!(e instanceof YarnRuntimeException)) {
-        e = new YarnRuntimeException(e);
+        appDirException = new YarnRuntimeException(e);
+      } else {
+        appDirException = (YarnRuntimeException)e;
       }
-      throw (YarnRuntimeException)e;
     }
-
 
     // TODO Get the user configuration for the list of containers that need log
     // aggregation.
@@ -391,6 +392,10 @@ public class LogAggregationService extends AbstractService implements
       }
     };
     this.threadPool.execute(aggregatorWrapper);
+
+    if (appDirException != null) {
+      throw appDirException;
+    }
   }
 
   protected void closeFileSystems(final UserGroupInformation userUgi) {
@@ -419,8 +424,14 @@ public class LogAggregationService extends AbstractService implements
           + ", did it fail to start?");
       return;
     }
-    ContainerType containerType = context.getContainers().get(
-        containerId).getContainerTokenIdentifier().getContainerType();
+    Container container = context.getContainers().get(containerId);
+    if (null == container) {
+      LOG.warn("Log aggregation cannot be started for " + containerId
+          + ", as its an absent container");
+      return;
+    }
+    ContainerType containerType =
+        container.getContainerTokenIdentifier().getContainerType();
     aggregator.startContainerLogAggregation(
         new ContainerLogContext(containerId, containerType, exitCode));
   }

@@ -18,11 +18,10 @@
 
 package org.apache.hadoop.hdfs;
 
-import java.util.concurrent.TimeUnit;
-
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.fs.CommonConfigurationKeys;
 import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
+import org.apache.hadoop.hdfs.protocol.HdfsConstants;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyDefault;
 import org.apache.hadoop.hdfs.server.datanode.fsdataset.impl.RamDiskReplicaLruTracker;
 import org.apache.hadoop.http.HttpConfig;
@@ -48,8 +47,12 @@ public class DFSConfigKeys extends CommonConfigurationKeys {
       HdfsClientConfigKeys.DFS_BYTES_PER_CHECKSUM_KEY;
   public static final int     DFS_BYTES_PER_CHECKSUM_DEFAULT =
       HdfsClientConfigKeys.DFS_BYTES_PER_CHECKSUM_DEFAULT;
-  public static final String  DFS_USER_HOME_DIR_PREFIX_KEY = "dfs.user.home.dir.prefix";
-  public static final String  DFS_USER_HOME_DIR_PREFIX_DEFAULT = "/user";
+  @Deprecated
+  public static final String  DFS_USER_HOME_DIR_PREFIX_KEY =
+      HdfsClientConfigKeys.DFS_USER_HOME_DIR_PREFIX_KEY;
+  @Deprecated
+  public static final String  DFS_USER_HOME_DIR_PREFIX_DEFAULT =
+      HdfsClientConfigKeys.DFS_USER_HOME_DIR_PREFIX_DEFAULT;
   public static final String  DFS_CHECKSUM_TYPE_KEY = HdfsClientConfigKeys
       .DFS_CHECKSUM_TYPE_KEY;
   public static final String  DFS_CHECKSUM_TYPE_DEFAULT =
@@ -60,13 +63,6 @@ public class DFSConfigKeys extends CommonConfigurationKeys {
       HdfsClientConfigKeys.DFS_HDFS_BLOCKS_METADATA_ENABLED_DEFAULT;
   public static final String DFS_WEBHDFS_ACL_PERMISSION_PATTERN_DEFAULT =
       HdfsClientConfigKeys.DFS_WEBHDFS_ACL_PERMISSION_PATTERN_DEFAULT;
-
-  // HDFS HTrace configuration is controlled by dfs.htrace.spanreceiver.classes,
-  // etc.
-  public static final String  DFS_SERVER_HTRACE_PREFIX = "dfs.htrace.";
-
-  // HDFS client HTrace configuration.
-  public static final String  DFS_CLIENT_HTRACE_PREFIX = "dfs.client.htrace.";
 
   // HA related configuration
   public static final String  DFS_DATANODE_RESTART_REPLICA_EXPIRY_KEY = "dfs.datanode.restart.replica.expiration";
@@ -80,8 +76,12 @@ public class DFSConfigKeys extends CommonConfigurationKeys {
   public static final long    DFS_DATANODE_BALANCE_BANDWIDTHPERSEC_DEFAULT = 1024*1024;
   public static final String  DFS_DATANODE_BALANCE_MAX_NUM_CONCURRENT_MOVES_KEY = "dfs.datanode.balance.max.concurrent.moves";
   public static final int     DFS_DATANODE_BALANCE_MAX_NUM_CONCURRENT_MOVES_DEFAULT = 5;
-  public static final String  DFS_DATANODE_READAHEAD_BYTES_KEY = "dfs.datanode.readahead.bytes";
-  public static final long    DFS_DATANODE_READAHEAD_BYTES_DEFAULT = 4 * 1024 * 1024; // 4MB
+  @Deprecated
+  public static final String  DFS_DATANODE_READAHEAD_BYTES_KEY =
+      HdfsClientConfigKeys.DFS_DATANODE_READAHEAD_BYTES_KEY;
+  @Deprecated
+  public static final long    DFS_DATANODE_READAHEAD_BYTES_DEFAULT =
+      HdfsClientConfigKeys.DFS_DATANODE_READAHEAD_BYTES_DEFAULT;
   public static final String  DFS_DATANODE_DROP_CACHE_BEHIND_WRITES_KEY = "dfs.datanode.drop.cache.behind.writes";
   public static final boolean DFS_DATANODE_DROP_CACHE_BEHIND_WRITES_DEFAULT = false;
   public static final String  DFS_DATANODE_SYNC_BEHIND_WRITES_KEY = "dfs.datanode.sync.behind.writes";
@@ -166,6 +166,8 @@ public class DFSConfigKeys extends CommonConfigurationKeys {
   public static final int     DFS_NAMENODE_REPLICATION_INTERVAL_DEFAULT = 3;
   public static final String  DFS_NAMENODE_REPLICATION_MIN_KEY = "dfs.namenode.replication.min";
   public static final int     DFS_NAMENODE_REPLICATION_MIN_DEFAULT = 1;
+  public static final String  DFS_NAMENODE_SAFEMODE_REPLICATION_MIN_KEY =
+      "dfs.namenode.safemode.replication.min";
   public static final String  DFS_NAMENODE_REPLICATION_PENDING_TIMEOUT_SEC_KEY = "dfs.namenode.replication.pending.timeout-sec";
   public static final int     DFS_NAMENODE_REPLICATION_PENDING_TIMEOUT_SEC_DEFAULT = -1;
   public static final String  DFS_NAMENODE_REPLICATION_MAX_STREAMS_KEY = "dfs.namenode.replication.max-streams";
@@ -214,6 +216,8 @@ public class DFSConfigKeys extends CommonConfigurationKeys {
 
   public static final String  DFS_NAMENODE_EDITS_DIR_MINIMUM_KEY = "dfs.namenode.edits.dir.minimum";
   public static final int     DFS_NAMENODE_EDITS_DIR_MINIMUM_DEFAULT = 1;
+  public static final String  DFS_NAMENODE_QUOTA_INIT_THREADS_KEY = "dfs.namenode.quota.init-threads";
+  public static final int     DFS_NAMENODE_QUOTA_INIT_THREADS_DEFAULT = 4;
 
   public static final String  DFS_NAMENODE_EDIT_LOG_AUTOROLL_MULTIPLIER_THRESHOLD = "dfs.namenode.edit.log.autoroll.multiplier.threshold";
   public static final float   DFS_NAMENODE_EDIT_LOG_AUTOROLL_MULTIPLIER_THRESHOLD_DEFAULT = 2.0f;
@@ -355,6 +359,10 @@ public class DFSConfigKeys extends CommonConfigurationKeys {
       "dfs.namenode.metrics.logger.period.seconds";
   public static final int     DFS_NAMENODE_METRICS_LOGGER_PERIOD_SECONDS_DEFAULT =
       600;
+  public static final String DFS_DATANODE_METRICS_LOGGER_PERIOD_SECONDS_KEY =
+      "dfs.datanode.metrics.logger.period.seconds";
+  public static final int DFS_DATANODE_METRICS_LOGGER_PERIOD_SECONDS_DEFAULT =
+      600;
 
   public static final String  DFS_BALANCER_MOVEDWINWIDTH_KEY = "dfs.balancer.movedWinWidth";
   public static final long    DFS_BALANCER_MOVEDWINWIDTH_DEFAULT = 5400*1000L;
@@ -386,6 +394,11 @@ public class DFSConfigKeys extends CommonConfigurationKeys {
   public static final int     DFS_DATANODE_DIRECTORYSCAN_INTERVAL_DEFAULT = 21600;
   public static final String  DFS_DATANODE_DIRECTORYSCAN_THREADS_KEY = "dfs.datanode.directoryscan.threads";
   public static final int     DFS_DATANODE_DIRECTORYSCAN_THREADS_DEFAULT = 1;
+  public static final String
+      DFS_DATANODE_DIRECTORYSCAN_THROTTLE_LIMIT_MS_PER_SEC_KEY =
+      "dfs.datanode.directoryscan.throttle.limit.ms.per.sec";
+  public static final int
+      DFS_DATANODE_DIRECTORYSCAN_THROTTLE_LIMIT_MS_PER_SEC_DEFAULT = 1000;
   public static final String  DFS_DATANODE_DNS_INTERFACE_KEY = "dfs.datanode.dns.interface";
   public static final String  DFS_DATANODE_DNS_INTERFACE_DEFAULT = "default";
   public static final String  DFS_DATANODE_DNS_NAMESERVER_KEY = "dfs.datanode.dns.nameserver";
@@ -503,7 +516,8 @@ public class DFSConfigKeys extends CommonConfigurationKeys {
   public static final String  DFS_WEB_UGI_KEY = "dfs.web.ugi";
   public static final String  DFS_NAMENODE_STARTUP_KEY = "dfs.namenode.startup";
   public static final String  DFS_DATANODE_KEYTAB_FILE_KEY = "dfs.datanode.keytab.file";
-  public static final String  DFS_DATANODE_KERBEROS_PRINCIPAL_KEY = "dfs.datanode.kerberos.principal";
+  public static final String  DFS_DATANODE_KERBEROS_PRINCIPAL_KEY =
+      HdfsClientConfigKeys.DFS_DATANODE_KERBEROS_PRINCIPAL_KEY;
   @Deprecated
   public static final String  DFS_DATANODE_USER_NAME_KEY = DFS_DATANODE_KERBEROS_PRINCIPAL_KEY;
   public static final String  DFS_DATANODE_SHARED_FILE_DESCRIPTOR_PATHS = "dfs.datanode.shared.file.descriptor.paths";
@@ -592,17 +606,32 @@ public class DFSConfigKeys extends CommonConfigurationKeys {
   // Security-related configs
   public static final String DFS_ENCRYPT_DATA_TRANSFER_KEY = "dfs.encrypt.data.transfer";
   public static final boolean DFS_ENCRYPT_DATA_TRANSFER_DEFAULT = false;
-  public static final String DFS_ENCRYPT_DATA_TRANSFER_CIPHER_KEY_BITLENGTH_KEY = "dfs.encrypt.data.transfer.cipher.key.bitlength";
-  public static final int    DFS_ENCRYPT_DATA_TRANSFER_CIPHER_KEY_BITLENGTH_DEFAULT = 128;
-  public static final String DFS_ENCRYPT_DATA_TRANSFER_CIPHER_SUITES_KEY = "dfs.encrypt.data.transfer.cipher.suites";
+  @Deprecated
+  public static final String DFS_ENCRYPT_DATA_TRANSFER_CIPHER_KEY_BITLENGTH_KEY =
+      HdfsClientConfigKeys.DFS_ENCRYPT_DATA_TRANSFER_CIPHER_KEY_BITLENGTH_KEY;
+  @Deprecated
+  public static final int    DFS_ENCRYPT_DATA_TRANSFER_CIPHER_KEY_BITLENGTH_DEFAULT =
+      HdfsClientConfigKeys.DFS_ENCRYPT_DATA_TRANSFER_CIPHER_KEY_BITLENGTH_DEFAULT;
+  @Deprecated
+  public static final String DFS_ENCRYPT_DATA_TRANSFER_CIPHER_SUITES_KEY =
+      HdfsClientConfigKeys.DFS_ENCRYPT_DATA_TRANSFER_CIPHER_SUITES_KEY;
   public static final String DFS_DATA_ENCRYPTION_ALGORITHM_KEY = "dfs.encrypt.data.transfer.algorithm";
-  public static final String DFS_TRUSTEDCHANNEL_RESOLVER_CLASS = "dfs.trustedchannel.resolver.class";
-  public static final String DFS_DATA_TRANSFER_PROTECTION_KEY = "dfs.data.transfer.protection";
-  public static final String DFS_DATA_TRANSFER_PROTECTION_DEFAULT = "";
-  public static final String DFS_DATA_TRANSFER_SASL_PROPS_RESOLVER_CLASS_KEY = "dfs.data.transfer.saslproperties.resolver.class";
+  @Deprecated
+  public static final String DFS_TRUSTEDCHANNEL_RESOLVER_CLASS =
+      HdfsClientConfigKeys.DFS_TRUSTEDCHANNEL_RESOLVER_CLASS;
+  @Deprecated
+  public static final String DFS_DATA_TRANSFER_PROTECTION_KEY =
+      HdfsClientConfigKeys.DFS_DATA_TRANSFER_PROTECTION_KEY;
+  @Deprecated
+  public static final String DFS_DATA_TRANSFER_PROTECTION_DEFAULT =
+      HdfsClientConfigKeys.DFS_DATA_TRANSFER_PROTECTION_DEFAULT;
+  @Deprecated
+  public static final String DFS_DATA_TRANSFER_SASL_PROPS_RESOLVER_CLASS_KEY =
+      HdfsClientConfigKeys.DFS_DATA_TRANSFER_SASL_PROPS_RESOLVER_CLASS_KEY;
   public static final int    DFS_NAMENODE_LIST_ENCRYPTION_ZONES_NUM_RESPONSES_DEFAULT = 100;
   public static final String DFS_NAMENODE_LIST_ENCRYPTION_ZONES_NUM_RESPONSES = "dfs.namenode.list.encryption.zones.num.responses";
-  public static final String DFS_ENCRYPTION_KEY_PROVIDER_URI = "dfs.encryption.key.provider.uri";
+  public static final String DFS_ENCRYPTION_KEY_PROVIDER_URI =
+      HdfsClientConfigKeys.DFS_ENCRYPTION_KEY_PROVIDER_URI;
 
   // Journal-node related configs. These are read on the JN side.
   public static final String  DFS_JOURNALNODE_EDITS_DIR_KEY = "dfs.journalnode.edits.dir";
@@ -745,9 +774,20 @@ public class DFSConfigKeys extends CommonConfigurationKeys {
   public static final boolean DFS_DATANODE_BLOCK_PINNING_ENABLED_DEFAULT =
     false;
 
+  public static final String
+      DFS_DATANODE_TRANSFER_SOCKET_SEND_BUFFER_SIZE_KEY =
+      "dfs.datanode.transfer.socket.send.buffer.size";
+  public static final int
+      DFS_DATANODE_TRANSFER_SOCKET_SEND_BUFFER_SIZE_DEFAULT =
+      HdfsConstants.DEFAULT_DATA_SOCKET_SIZE;
 
-  
-  
+  public static final String
+      DFS_DATANODE_TRANSFER_SOCKET_RECV_BUFFER_SIZE_KEY =
+      "dfs.datanode.transfer.socket.recv.buffer.size";
+  public static final int
+      DFS_DATANODE_TRANSFER_SOCKET_RECV_BUFFER_SIZE_DEFAULT =
+      HdfsConstants.DEFAULT_DATA_SOCKET_SIZE;
+
   // dfs.client.retry confs are moved to HdfsClientConfigKeys.Retry 
   @Deprecated
   public static final String  DFS_CLIENT_RETRY_POLICY_ENABLED_KEY
@@ -1084,9 +1124,9 @@ public class DFSConfigKeys extends CommonConfigurationKeys {
   @Deprecated
   public static final boolean DFS_CLIENT_USE_LEGACY_BLOCKREADERLOCAL_DEFAULT
       = HdfsClientConfigKeys.DFS_CLIENT_USE_LEGACY_BLOCKREADERLOCAL_DEFAULT;
-
-  public static final String  DFS_CLIENT_LOCAL_INTERFACES = "dfs.client.local.interfaces";
-
+  @Deprecated
+  public static final String  DFS_CLIENT_LOCAL_INTERFACES =
+      HdfsClientConfigKeys.DFS_CLIENT_LOCAL_INTERFACES;
 
   @Deprecated
   public static final String  DFS_CLIENT_DOMAIN_SOCKET_DATA_TRAFFIC =
@@ -1095,10 +1135,12 @@ public class DFSConfigKeys extends CommonConfigurationKeys {
   public static final boolean DFS_CLIENT_DOMAIN_SOCKET_DATA_TRAFFIC_DEFAULT =
       HdfsClientConfigKeys.DFS_CLIENT_DOMAIN_SOCKET_DATA_TRAFFIC_DEFAULT;
 
-  // The number of NN response dropped by client proactively in each RPC call.
-  // For testing NN retry cache, we can set this property with positive value.
-  public static final String  DFS_CLIENT_TEST_DROP_NAMENODE_RESPONSE_NUM_KEY = "dfs.client.test.drop.namenode.response.number";
-  public static final int     DFS_CLIENT_TEST_DROP_NAMENODE_RESPONSE_NUM_DEFAULT = 0;
+  @Deprecated
+  public static final String  DFS_CLIENT_TEST_DROP_NAMENODE_RESPONSE_NUM_KEY =
+      HdfsClientConfigKeys.DFS_CLIENT_TEST_DROP_NAMENODE_RESPONSE_NUM_KEY;
+  @Deprecated
+  public static final int     DFS_CLIENT_TEST_DROP_NAMENODE_RESPONSE_NUM_DEFAULT =
+      HdfsClientConfigKeys.DFS_CLIENT_TEST_DROP_NAMENODE_RESPONSE_NUM_DEFAULT;
 
   @Deprecated
   public static final String  DFS_CLIENT_SLOW_IO_WARNING_THRESHOLD_KEY =

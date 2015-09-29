@@ -21,6 +21,7 @@ package org.apache.hadoop.storagecontainer;
 import com.google.protobuf.BlockingService;
 import org.apache.hadoop.ha.HAServiceProtocol;
 import org.apache.hadoop.hdfs.DFSUtil;
+import org.apache.hadoop.hdfs.DFSUtilClient;
 import org.apache.hadoop.hdfs.protocol.*;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos;
 import org.apache.hadoop.hdfs.protocolPB.DatanodeProtocolPB;
@@ -129,7 +130,7 @@ public class StorageContainerManager
       serviceRPCAddress = null;
     }
 
-    InetSocketAddress rpcAddr = NameNode.getAddress(conf);
+    InetSocketAddress rpcAddr = DFSUtilClient.getNNAddress(conf);
     String bindHost = conf.getTrimmed(DFS_NAMENODE_RPC_BIND_HOST_KEY);
     if (bindHost == null || bindHost.isEmpty()) {
       bindHost = rpcAddr.getHostName();
@@ -155,7 +156,7 @@ public class StorageContainerManager
     clientRpcAddress = new InetSocketAddress(
         rpcAddr.getHostName(), listenAddr.getPort());
     conf.set(FS_DEFAULT_NAME_KEY,
-        NameNode.getUri(clientRpcAddress).toString());
+        DFSUtilClient.getNNUri(clientRpcAddress).toString());
   }
 
   @Override

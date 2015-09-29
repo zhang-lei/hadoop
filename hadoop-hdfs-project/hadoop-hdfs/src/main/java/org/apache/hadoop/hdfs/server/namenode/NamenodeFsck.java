@@ -45,11 +45,11 @@ import org.apache.hadoop.hdfs.BlockReader;
 import org.apache.hadoop.hdfs.BlockReaderFactory;
 import org.apache.hadoop.hdfs.DFSClient;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
+import org.apache.hadoop.hdfs.DFSUtilClient;
 import org.apache.hadoop.hdfs.RemotePeerFactory;
 import org.apache.hadoop.fs.StorageType;
 import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
 import org.apache.hadoop.hdfs.net.Peer;
-import org.apache.hadoop.hdfs.net.TcpPeerServer;
 import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.DatanodeID;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
@@ -80,7 +80,9 @@ import org.apache.hadoop.net.NodeBase;
 import org.apache.hadoop.security.AccessControlException;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.Token;
+import org.apache.hadoop.tracing.TraceUtils;
 import org.apache.hadoop.util.Time;
+import org.apache.htrace.core.Tracer;
 
 import com.google.common.annotations.VisibleForTesting;
 
@@ -137,6 +139,8 @@ public class NamenodeFsck implements DataEncryptionKeyFactory {
 
   private boolean showReplicaDetails = false;
   private long staleInterval;
+  private Tracer tracer;
+
   /**
    * True if we encountered an internal error during FSCK, such as not being
    * able to delete a corrupt file.
@@ -199,6 +203,9 @@ public class NamenodeFsck implements DataEncryptionKeyFactory {
     this.staleInterval =
         conf.getLong(DFSConfigKeys.DFS_NAMENODE_STALE_DATANODE_INTERVAL_KEY,
           DFSConfigKeys.DFS_NAMENODE_STALE_DATANODE_INTERVAL_DEFAULT);
+    this.tracer = new Tracer.Builder("NamenodeFsck").
+        conf(TraceUtils.wrapHadoopConf("namenode.fsck.htrace.", conf)).
+        build();
 
     for (Iterator<String> it = pmap.keySet().iterator(); it.hasNext();) {
       String key = it.next();
@@ -254,9 +261,7 @@ public class NamenodeFsck implements DataEncryptionKeyFactory {
       NumberReplicas numberReplicas= bm.countNodes(blockInfo);
       out.println("Block Id: " + blockId);
       out.println("Block belongs to: "+iNode.getFullPathName());
-      if (blockInfo != null) {
-        out.println("No. of Expected Replica: " + blockInfo.getReplication());
-      }
+      out.println("No. of Expected Replica: " + blockInfo.getReplication());
       out.println("No. of live Replica: " + numberReplicas.liveReplicas());
       out.println("No. of excess Replica: " + numberReplicas.excessReplicas());
       out.println("No. of stale Replica: " +
@@ -760,7 +765,7 @@ public class NamenodeFsck implements DataEncryptionKeyFactory {
 
   private void copyBlocksToLostFound(String parent, HdfsFileStatus file,
         LocatedBlocks blocks) throws IOException {
-    final DFSClient dfs = new DFSClient(NameNode.getAddress(conf), conf);
+    final DFSClient dfs = new DFSClient(DFSUtilClient.getNNAddress(conf), conf);
     final String fullName = file.getFullName(parent);
     OutputStream fos = null;
     try {
@@ -876,6 +881,7 @@ public class NamenodeFsck implements DataEncryptionKeyFactory {
             setCachingStrategy(CachingStrategy.newDropBehind()).
             setClientCacheContext(dfs.getClientContext()).
             setConfiguration(namenode.conf).
+            setTracer(tracer).
             setRemotePeerFactory(new RemotePeerFactory() {
               @Override
               public Peer newConnectedPeer(InetSocketAddress addr,
@@ -886,7 +892,7 @@ public class NamenodeFsck implements DataEncryptionKeyFactory {
                 try {
                   s.connect(addr, HdfsConstants.READ_TIMEOUT);
                   s.setSoTimeout(HdfsConstants.READ_TIMEOUT);
-                  peer = TcpPeerServer.peerFromSocketAndKey(
+                  peer = DFSUtilClient.peerFromSocketAndKey(
                         dfs.getSaslDataTransferClient(), s, NamenodeFsck.this,
                         blockToken, datanodeId);
                 } finally {

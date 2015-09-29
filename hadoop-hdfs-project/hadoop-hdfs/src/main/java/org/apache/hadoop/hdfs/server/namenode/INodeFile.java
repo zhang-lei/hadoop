@@ -89,7 +89,7 @@ public class INodeFile extends INodeWithAdditionalFields
 
     private final LongBitFormat BITS;
 
-    private HeaderFormat(LongBitFormat previous, int length, long min) {
+    HeaderFormat(LongBitFormat previous, int length, long min) {
       BITS = new LongBitFormat(name(), previous, length, min);
     }
 
@@ -244,7 +244,7 @@ public class INodeFile extends INodeWithAdditionalFields
   }
 
   void setLastBlock(BlockInfo blk) {
-    blk.setBlockCollection(this);
+    blk.setBlockCollectionId(this.getId());
     setBlock(numBlocks() - 1, blk);
   }
 
@@ -460,7 +460,7 @@ public class INodeFile extends INodeWithAdditionalFields
 
     setBlocks(newlist);
     for(BlockInfo b : blocks) {
-      b.setBlockCollection(this);
+      b.setBlockCollectionId(getId());
       short oldRepl = b.getReplication();
       short repl = getPreferredBlockReplication();
       if (oldRepl != repl) {
@@ -544,7 +544,7 @@ public class INodeFile extends INodeWithAdditionalFields
     if (blocks != null && reclaimContext.collectedBlocks != null) {
       for (BlockInfo blk : blocks) {
         reclaimContext.collectedBlocks.addDeleteBlock(blk);
-        blk.setBlockCollection(null);
+        blk.setBlockCollectionId(INodeId.INVALID_INODE_ID);
       }
     }
     clearBlocks();
@@ -610,23 +610,10 @@ public class INodeFile extends INodeWithAdditionalFields
 
   @Override
   public final ContentSummaryComputationContext computeContentSummary(
-      final ContentSummaryComputationContext summary) {
+      int snapshotId, final ContentSummaryComputationContext summary) {
     final ContentCounts counts = summary.getCounts();
-    FileWithSnapshotFeature sf = getFileWithSnapshotFeature();
-    final long fileLen;
-    if (sf == null) {
-      fileLen = computeFileSize();
-      counts.addContent(Content.FILE, 1);
-    } else {
-      final FileDiffList diffs = sf.getDiffs();
-      final int n = diffs.asList().size();
-      counts.addContent(Content.FILE, n);
-      if (n > 0 && sf.isCurrentFileDeleted()) {
-        fileLen =  diffs.getLast().getFileSize();
-      } else {
-        fileLen = computeFileSize();
-      }
-    }
+    counts.addContent(Content.FILE, 1);
+    final long fileLen = computeFileSize(snapshotId);
     counts.addContent(Content.LENGTH, fileLen);
     counts.addContent(Content.DISKSPACE, storagespaceConsumed(null)
         .getStorageSpace());

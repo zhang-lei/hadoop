@@ -28,23 +28,28 @@ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.BlockUCState;
 import org.apache.hadoop.hdfs.server.namenode.NameNode;
 import org.apache.hadoop.util.LightWeightGSet;
 
+import static org.apache.hadoop.hdfs.server.namenode.INodeId.INVALID_INODE_ID;
+
 /**
  * BlockInfo class maintains for a given block
  * the {@link BlockCollection} it is part of and datanodes where the replicas of
  * the block are stored.
  */
 @InterfaceAudience.Private
-public abstract class  BlockInfo extends Block
+public abstract class BlockInfo extends Block
     implements LightWeightGSet.LinkedElement {
 
   public static final BlockInfo[] EMPTY_ARRAY = {};
 
   /**
-   * Replication factor
+   * Replication factor.
    */
   private short replication;
 
-  private BlockCollection bc;
+  /**
+   * Block collection ID.
+   */
+  private long bcId;
 
   /** For implementing {@link LightWeightGSet.LinkedElement} interface. */
   private LightWeightGSet.LinkedElement nextLinkedElement;
@@ -71,14 +76,14 @@ public abstract class  BlockInfo extends Block
    */
   public BlockInfo(short replication) {
     this.triplets = new Object[3*replication];
-    this.bc = null;
+    this.bcId = INVALID_INODE_ID;
     this.replication = replication;
   }
 
   public BlockInfo(Block blk, short replication) {
     super(blk);
     this.triplets = new Object[3*replication];
-    this.bc = null;
+    this.bcId = INVALID_INODE_ID;
     this.replication = replication;
   }
 
@@ -88,7 +93,7 @@ public abstract class  BlockInfo extends Block
    */
   protected BlockInfo(BlockInfo from) {
     this(from, from.getReplication());
-    this.bc = from.bc;
+    this.bcId = from.bcId;
   }
 
   public short getReplication() {
@@ -99,16 +104,16 @@ public abstract class  BlockInfo extends Block
     this.replication = repl;
   }
 
-  public BlockCollection getBlockCollection() {
-    return bc;
+  public long getBlockCollectionId() {
+    return bcId;
   }
 
-  public void setBlockCollection(BlockCollection bc) {
-    this.bc = bc;
+  public void setBlockCollectionId(long id) {
+    this.bcId = id;
   }
 
   public boolean isDeleted() {
-    return (bc == null);
+    return bcId == INVALID_INODE_ID;
   }
 
   public DatanodeDescriptor getDatanode(int index) {
@@ -200,12 +205,6 @@ public abstract class  BlockInfo extends Block
    * Remove {@link DatanodeStorageInfo} location for a block
    */
   abstract boolean removeStorage(DatanodeStorageInfo storage);
-
-  /**
-   * Replace the current BlockInfo with the new one in corresponding
-   * DatanodeStorageInfo's linked list
-   */
-  abstract void replaceBlock(BlockInfo newBlock);
 
   /**
    * Find specified DatanodeStorageInfo.
@@ -367,19 +366,12 @@ public abstract class  BlockInfo extends Block
   }
 
   /**
-   * Convert an under construction block to a complete block.
-   *
-   * @return BlockInfo - a complete block.
-   * @throws IOException if the state of the block
-   * (the generation stamp and the length) has not been committed by
-   * the client or it does not have at least a minimal number of replicas
-   * reported from data-nodes.
+   * Convert an under construction block to complete.
    */
-  BlockInfo convertToCompleteBlock() throws IOException {
+  void convertToCompleteBlock() {
     assert getBlockUCState() != BlockUCState.COMPLETE :
         "Trying to convert a COMPLETE block";
     uc = null;
-    return this;
   }
 
   /**

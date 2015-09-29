@@ -185,6 +185,12 @@ public class ClientRMService extends AbstractService implements
   private ReservationSystem reservationSystem;
   private ReservationInputValidator rValidator;
 
+  private static final EnumSet<RMAppState> COMPLETED_APP_STATES = EnumSet.of(
+      RMAppState.FINISHED, RMAppState.FINISHING, RMAppState.FAILED,
+      RMAppState.KILLED, RMAppState.FINAL_SAVING, RMAppState.KILLING);
+  private static final EnumSet<RMAppState> ACTIVE_APP_STATES = EnumSet.of(
+      RMAppState.ACCEPTED, RMAppState.RUNNING);
+
   public ClientRMService(RMContext rmContext, YarnScheduler scheduler,
       RMAppManager rmAppManager, ApplicationACLsManager applicationACLsManager,
       QueueACLsManager queueACLsManager,
@@ -315,6 +321,9 @@ public class ClientRMService extends AbstractService implements
   public GetApplicationReportResponse getApplicationReport(
       GetApplicationReportRequest request) throws YarnException {
     ApplicationId applicationId = request.getApplicationId();
+    if (applicationId == null) {
+      throw new ApplicationNotFoundException("Invalid application id: null");
+    }
 
     UserGroupInformation callerUGI;
     try {
@@ -1097,7 +1106,7 @@ public class ClientRMService extends AbstractService implements
           .contains(UserGroupInformation.getCurrentUser()
                   .getRealAuthenticationMethod());
     } else {
-      return true;
+      return false;
     }
   }
 
@@ -1331,7 +1340,8 @@ public class ClientRMService extends AbstractService implements
           AuditConstants.UPDATE_APP_PRIORITY, "UNKNOWN", "ClientRMService",
           "Trying to update priority of an absent application", applicationId);
       throw new ApplicationNotFoundException(
-          "Trying to update priority o an absent application " + applicationId);
+          "Trying to update priority of an absent application "
+          + applicationId);
     }
 
     if (!checkAccess(callerUGI, application.getUser(),
@@ -1346,12 +1356,20 @@ public class ClientRMService extends AbstractService implements
           + ApplicationAccessType.MODIFY_APP.name() + " on " + applicationId));
     }
 
+    UpdateApplicationPriorityResponse response = recordFactory
+        .newRecordInstance(UpdateApplicationPriorityResponse.class);
     // Update priority only when app is tracked by the scheduler
-    if (!EnumSet.of(RMAppState.ACCEPTED, RMAppState.RUNNING).contains(
-        application.getState())) {
-      String msg =
-          "Application in " + application.getState()
-              + " state cannot be update priority.";
+    if (!ACTIVE_APP_STATES.contains(application.getState())) {
+      if (COMPLETED_APP_STATES.contains(application.getState())) {
+        // If Application is in any of the final states, change priority
+        // can be skipped rather throwing exception.
+        RMAuditLogger.logSuccess(callerUGI.getShortUserName(),
+            AuditConstants.UPDATE_APP_PRIORITY, "ClientRMService",
+            applicationId);
+        return response;
+      }
+      String msg = "Application in " + application.getState()
+          + " state cannot update priority.";
       RMAuditLogger
           .logFailure(callerUGI.getShortUserName(),
               AuditConstants.UPDATE_APP_PRIORITY, "UNKNOWN", "ClientRMService",
@@ -1371,9 +1389,6 @@ public class ClientRMService extends AbstractService implements
 
     RMAuditLogger.logSuccess(callerUGI.getShortUserName(),
         AuditConstants.UPDATE_APP_PRIORITY, "ClientRMService", applicationId);
-    UpdateApplicationPriorityResponse response =
-        recordFactory
-            .newRecordInstance(UpdateApplicationPriorityResponse.class);
     return response;
   }
 

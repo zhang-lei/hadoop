@@ -80,6 +80,7 @@ import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.protocol.LocatedBlocks;
+import org.apache.hadoop.hdfs.server.blockmanagement.BlockCollection;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockManager;
 import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeDescriptor;
@@ -91,6 +92,7 @@ import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.net.NetworkTopology;
 import org.apache.hadoop.security.AccessControlException;
 import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.hadoop.test.GenericTestUtils;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
@@ -136,12 +138,12 @@ public class TestFsck {
                         throws Exception {
     ByteArrayOutputStream bStream = new ByteArrayOutputStream();
     PrintStream out = new PrintStream(bStream, true);
-    ((Log4JLogger)FSPermissionChecker.LOG).getLogger().setLevel(Level.ALL);
+    GenericTestUtils.setLogLevel(FSPermissionChecker.LOG, Level.ALL);
     int errCode = ToolRunner.run(new DFSck(conf, out), path);
     if (checkErrorCode) {
       assertEquals(expectedErrCode, errCode);
     }
-    ((Log4JLogger)FSPermissionChecker.LOG).getLogger().setLevel(Level.INFO);
+    GenericTestUtils.setLogLevel(FSPermissionChecker.LOG, Level.INFO);
     FSImage.LOG.error("OUTPUT = " + bStream.toString());
     return bStream.toString();
   }
@@ -396,6 +398,7 @@ public class TestFsck {
 
       // Copy the non-corrupt blocks of corruptFileName to lost+found.
       outStr = runFsck(conf, 1, false, "/", "-move");
+      FSImage.LOG.info("WATERMELON: outStr = " + outStr);
       assertTrue(outStr.contains(NamenodeFsck.CORRUPT_STATUS));
 
       // Make sure that we properly copied the block files from the DataNodes
@@ -828,11 +831,19 @@ public class TestFsck {
 
       // decommission datanode
       ExtendedBlock eb = DFSTestUtil.getFirstBlock(dfs, path);
-      DatanodeDescriptor dn =
-          cluster.getNameNode().getNamesystem().getBlockManager()
-              .getBlockCollection(eb.getLocalBlock()).getBlocks()[0].getDatanode(0);
-      cluster.getNameNode().getNamesystem().getBlockManager().getDatanodeManager()
-          .getDecomManager().startDecommission(dn);
+      FSNamesystem fsn = cluster.getNameNode().getNamesystem();
+      BlockManager bm = fsn.getBlockManager();
+      BlockCollection bc = null;
+      try {
+        fsn.writeLock();
+        BlockInfo bi = bm.getStoredBlock(eb.getLocalBlock());
+        bc = bm.getBlockCollection(bi);
+      } finally {
+        fsn.writeUnlock();
+      }
+      DatanodeDescriptor dn = bc.getBlocks()[0]
+          .getDatanode(0);
+      bm.getDatanodeManager().getDecomManager().startDecommission(dn);
       String dnName = dn.getXferAddr();
 
       // check the replica status while decommissioning
@@ -1387,12 +1398,19 @@ public class TestFsck {
       assertTrue(outStr.contains(NamenodeFsck.HEALTHY_STATUS));
 
       //decommission datanode
+      FSNamesystem fsn = cluster.getNameNode().getNamesystem();
+      BlockManager bm = fsn.getBlockManager();
       ExtendedBlock eb = util.getFirstBlock(dfs, path);
-      DatanodeDescriptor dn = cluster.getNameNode().getNamesystem()
-          .getBlockManager().getBlockCollection(eb.getLocalBlock())
-          .getBlocks()[0].getDatanode(0);
-      cluster.getNameNode().getNamesystem().getBlockManager()
-          .getDatanodeManager().getDecomManager().startDecommission(dn);
+      BlockCollection bc = null;
+      try {
+        fsn.writeLock();
+        BlockInfo bi = bm.getStoredBlock(eb.getLocalBlock());
+        bc = bm.getBlockCollection(bi);
+      } finally {
+        fsn.writeUnlock();
+      }
+      DatanodeDescriptor dn = bc.getBlocks()[0].getDatanode(0);
+      bm.getDatanodeManager().getDecomManager().startDecommission(dn);
       String dnName = dn.getXferAddr();
 
       //wait for decommission start
@@ -1595,12 +1613,20 @@ public class TestFsck {
       assertTrue(outStr.contains(NamenodeFsck.HEALTHY_STATUS));
 
       // decommission datanode
+      FSNamesystem fsn = cluster.getNameNode().getNamesystem();
+      BlockManager bm = fsn.getBlockManager();
       ExtendedBlock eb = util.getFirstBlock(dfs, path);
-      DatanodeDescriptor dn = cluster.getNameNode().getNamesystem()
-          .getBlockManager().getBlockCollection(eb.getLocalBlock())
-          .getBlocks()[0].getDatanode(0);
-      cluster.getNameNode().getNamesystem().getBlockManager()
-          .getDatanodeManager().getDecomManager().startDecommission(dn);
+      BlockCollection bc = null;
+      try {
+        fsn.writeLock();
+        BlockInfo bi = bm.getStoredBlock(eb.getLocalBlock());
+        bc = bm.getBlockCollection(bi);
+      } finally {
+        fsn.writeUnlock();
+      }
+      DatanodeDescriptor dn = bc.getBlocks()[0]
+          .getDatanode(0);
+      bm.getDatanodeManager().getDecomManager().startDecommission(dn);
       String dnName = dn.getXferAddr();
 
       // wait for decommission start

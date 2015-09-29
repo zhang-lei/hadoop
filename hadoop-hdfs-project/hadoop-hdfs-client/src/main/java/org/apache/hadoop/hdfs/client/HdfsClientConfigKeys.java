@@ -36,6 +36,14 @@ public interface HdfsClientConfigKeys {
   String DFS_WEBHDFS_ACL_PERMISSION_PATTERN_DEFAULT =
       "^(default:)?(user|group|mask|other):[[A-Za-z_][A-Za-z0-9._-]]*:([rwx-]{3})?(,(default:)?(user|group|mask|other):[[A-Za-z_][A-Za-z0-9._-]]*:([rwx-]{3})?)*$";
 
+  String DFS_WEBHDFS_OAUTH_ENABLED_KEY = "dfs.webhdfs.oauth2.enabled";
+  boolean DFS_WEBHDFS_OAUTH_ENABLED_DEFAULT = false;
+
+  String OAUTH_CLIENT_ID_KEY = "dfs.webhdfs.oauth2.client.id";
+  String OAUTH_REFRESH_URL_KEY = "dfs.webhdfs.oauth2.refresh.url";
+
+  String ACCESS_TOKEN_PROVIDER_KEY = "dfs.webhdfs.oauth2.access.token.provider";
+
   String PREFIX = "dfs.client.";
   String  DFS_NAMESERVICES = "dfs.nameservices";
   int     DFS_NAMENODE_HTTP_PORT_DEFAULT = 50070;
@@ -113,8 +121,36 @@ public interface HdfsClientConfigKeys {
       "dfs.datanode.hdfs-blocks-metadata.enabled";
   boolean DFS_HDFS_BLOCKS_METADATA_ENABLED_DEFAULT = false;
 
-  static final String REPLICA_ACCESSOR_BUILDER_CLASSES_KEY =
+  String  DFS_DATANODE_KERBEROS_PRINCIPAL_KEY = "dfs.datanode.kerberos.principal";
+  String  DFS_DATANODE_READAHEAD_BYTES_KEY = "dfs.datanode.readahead.bytes";
+  long    DFS_DATANODE_READAHEAD_BYTES_DEFAULT = 4 * 1024 * 1024; // 4MB
+  String  DFS_ENCRYPTION_KEY_PROVIDER_URI = "dfs.encryption.key.provider.uri";
+
+  String DFS_ENCRYPT_DATA_TRANSFER_CIPHER_SUITES_KEY =
+      "dfs.encrypt.data.transfer.cipher.suites";
+
+  String DFS_DATA_TRANSFER_PROTECTION_KEY = "dfs.data.transfer.protection";
+  String DFS_DATA_TRANSFER_PROTECTION_DEFAULT = "";
+  String DFS_DATA_TRANSFER_SASL_PROPS_RESOLVER_CLASS_KEY =
+      "dfs.data.transfer.saslproperties.resolver.class";
+
+  String DFS_ENCRYPT_DATA_TRANSFER_CIPHER_KEY_BITLENGTH_KEY =
+      "dfs.encrypt.data.transfer.cipher.key.bitlength";
+  int    DFS_ENCRYPT_DATA_TRANSFER_CIPHER_KEY_BITLENGTH_DEFAULT = 128;
+
+  String DFS_TRUSTEDCHANNEL_RESOLVER_CLASS = "dfs.trustedchannel.resolver.class";
+
+  String REPLICA_ACCESSOR_BUILDER_CLASSES_KEY =
       PREFIX + "replica.accessor.builder.classes";
+
+  // The number of NN response dropped by client proactively in each RPC call.
+  // For testing NN retry cache, we can set this property with positive value.
+  String  DFS_CLIENT_TEST_DROP_NAMENODE_RESPONSE_NUM_KEY =
+      "dfs.client.test.drop.namenode.response.number";
+  int     DFS_CLIENT_TEST_DROP_NAMENODE_RESPONSE_NUM_DEFAULT = 0;
+  String  DFS_CLIENT_LOCAL_INTERFACES = "dfs.client.local.interfaces";
+  String  DFS_USER_HOME_DIR_PREFIX_KEY = "dfs.user.home.dir.prefix";
+  String  DFS_USER_HOME_DIR_PREFIX_DEFAULT = "/user";
 
   /** dfs.client.retry configuration properties */
   interface Retry {

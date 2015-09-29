@@ -25,6 +25,7 @@ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguous;
 import org.apache.hadoop.util.GSet;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -76,6 +77,11 @@ public class StorageContainerMap implements GSet<Block, BlockInfo> {
   @Override
   public void clear() {
     containerPrefixMap.clear();
+  }
+
+  @Override
+  public Collection<BlockInfo> values() {
+    return null;
   }
 
   @Override

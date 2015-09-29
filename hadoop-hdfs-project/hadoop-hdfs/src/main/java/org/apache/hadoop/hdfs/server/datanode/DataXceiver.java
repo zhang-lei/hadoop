@@ -49,7 +49,7 @@ import java.util.Arrays;
 import com.google.common.annotations.VisibleForTesting;
 import org.apache.commons.logging.Log;
 import org.apache.hadoop.fs.StorageType;
-import org.apache.hadoop.hdfs.DFSUtil;
+import org.apache.hadoop.hdfs.DFSUtilClient;
 import org.apache.hadoop.hdfs.ExtendedBlockId;
 import org.apache.hadoop.hdfs.net.Peer;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
@@ -127,7 +127,7 @@ class DataXceiver extends Receiver implements Runnable {
   
   private DataXceiver(Peer peer, DataNode datanode,
       DataXceiverServer dataXceiverServer) throws IOException {
-
+    super(datanode.tracer);
     this.peer = peer;
     this.dnConf = datanode.getDnConf();
     this.socketIn = peer.getInputStream();
@@ -135,8 +135,8 @@ class DataXceiver extends Receiver implements Runnable {
     this.datanode = datanode;
     this.dataXceiverServer = dataXceiverServer;
     this.connectToDnViaHostname = datanode.getDnConf().connectToDnViaHostname;
-    this.ioFileBufferSize = DFSUtil.getIoFileBufferSize(datanode.getConf());
-    this.smallBufferSize = DFSUtil.getSmallBufferSize(datanode.getConf());
+    this.ioFileBufferSize = DFSUtilClient.getIoFileBufferSize(datanode.getConf());
+    this.smallBufferSize = DFSUtilClient.getSmallBufferSize(datanode.getConf());
     remoteAddress = peer.getRemoteAddressString();
     final int colonIdx = remoteAddress.indexOf(':');
     remoteAddressWithoutPort =
@@ -724,14 +724,17 @@ class DataXceiver extends Receiver implements Runnable {
         mirrorTarget = NetUtils.createSocketAddr(mirrorNode);
         mirrorSock = datanode.newSocket();
         try {
-          int timeoutValue = dnConf.socketTimeout
-              + (HdfsConstants.READ_TIMEOUT_EXTENSION * targets.length);
-          int writeTimeout = dnConf.socketWriteTimeout + 
-                      (HdfsConstants.WRITE_TIMEOUT_EXTENSION * targets.length);
+          int timeoutValue = dnConf.socketTimeout +
+              (HdfsConstants.READ_TIMEOUT_EXTENSION * targets.length);
+          int writeTimeout = dnConf.socketWriteTimeout +
+              (HdfsConstants.WRITE_TIMEOUT_EXTENSION * targets.length);
           NetUtils.connect(mirrorSock, mirrorTarget, timeoutValue);
           mirrorSock.setSoTimeout(timeoutValue);
-          mirrorSock.setSendBufferSize(HdfsConstants.DEFAULT_DATA_SOCKET_SIZE);
-          
+          if (dnConf.getTransferSocketSendBufferSize() > 0) {
+            mirrorSock.setSendBufferSize(
+                dnConf.getTransferSocketSendBufferSize());
+          }
+
           OutputStream unbufMirrorOut = NetUtils.getOutputStream(mirrorSock,
               writeTimeout);
           InputStream unbufMirrorIn = NetUtils.getInputStream(mirrorSock);
@@ -770,7 +773,7 @@ class DataXceiver extends Receiver implements Runnable {
             mirrorInStatus = connectAck.getStatus();
             firstBadLink = connectAck.getFirstBadLink();
             if (LOG.isDebugEnabled() || mirrorInStatus != SUCCESS) {
-              LOG.info("Datanode " + targets.length +
+              LOG.debug("Datanode " + targets.length +
                        " got response for connect ack " +
                        " from downstream datanode with firstbadlink as " +
                        firstBadLink);
@@ -809,7 +812,7 @@ class DataXceiver extends Receiver implements Runnable {
       // send connect-ack to source for clients and not transfer-RBW/Finalized
       if (isClient && !isTransfer) {
         if (LOG.isDebugEnabled() || mirrorInStatus != SUCCESS) {
-          LOG.info("Datanode " + targets.length +
+          LOG.debug("Datanode " + targets.length +
                    " forwarding connect ack to upstream firstbadlink is " +
                    firstBadLink);
         }

@@ -1160,7 +1160,7 @@ public class TestNodeStatusUpdater {
           ApplicationACLsManager aclsManager,
           LocalDirsHandlerService dirsHandler) {
         return new ContainerManagerImpl(context, exec, del, nodeStatusUpdater,
-            metrics, aclsManager, dirsHandler) {
+            metrics, dirsHandler) {
 
           @Override
           public void cleanUpApplicationsOnNMShutDown() {
@@ -1373,7 +1373,7 @@ public class TestNodeStatusUpdater {
           ApplicationACLsManager aclsManager,
           LocalDirsHandlerService diskhandler) {
         return new ContainerManagerImpl(context, exec, del, nodeStatusUpdater,
-          metrics, aclsManager, diskhandler) {
+          metrics, diskhandler) {
           @Override
           protected void serviceStart() {
             // Simulating failure of starting RPC server
@@ -1523,7 +1523,7 @@ public class TestNodeStatusUpdater {
           ApplicationACLsManager aclsManager,
           LocalDirsHandlerService dirsHandler) {
         return new ContainerManagerImpl(context, exec, del, nodeStatusUpdater,
-            metrics, aclsManager, dirsHandler) {
+            metrics, dirsHandler) {
 
           @Override
           public void cleanUpApplicationsOnNMShutDown() {
@@ -1662,7 +1662,7 @@ public class TestNodeStatusUpdater {
     ContainerStatus containerStatus =
         BuilderUtils.newContainerStatus(contaierId, containerState,
           "test_containerStatus: id=" + id + ", containerState: "
-              + containerState, 0);
+              + containerState, 0, Resource.newInstance(1024, 1));
     return containerStatus;
   }
 

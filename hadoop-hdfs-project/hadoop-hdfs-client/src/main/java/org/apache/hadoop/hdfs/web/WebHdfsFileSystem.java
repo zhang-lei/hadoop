@@ -149,8 +149,19 @@ public class WebHdfsFileSystem extends FileSystem
         HdfsClientConfigKeys.DFS_WEBHDFS_USER_PATTERN_KEY,
         HdfsClientConfigKeys.DFS_WEBHDFS_USER_PATTERN_DEFAULT));
 
-    connectionFactory = URLConnectionFactory
-        .newDefaultURLConnectionFactory(conf);
+    boolean isOAuth = conf.getBoolean(
+        HdfsClientConfigKeys.DFS_WEBHDFS_OAUTH_ENABLED_KEY,
+        HdfsClientConfigKeys.DFS_WEBHDFS_OAUTH_ENABLED_DEFAULT);
+
+    if(isOAuth) {
+      LOG.debug("Enabling OAuth2 in WebHDFS");
+      connectionFactory = URLConnectionFactory
+          .newOAuth2URLConnectionFactory(conf);
+    } else {
+      LOG.debug("Not enabling OAuth2 in WebHDFS");
+      connectionFactory = URLConnectionFactory
+          .newDefaultURLConnectionFactory(conf);
+    }
 
 
     ugi = UserGroupInformation.getCurrentUser();
@@ -1168,7 +1179,6 @@ public class WebHdfsFileSystem extends FileSystem
   }
 
   @Override
-  @SuppressWarnings("deprecation")
   public FSDataOutputStream createNonRecursive(final Path f,
       final FsPermission permission, final EnumSet<CreateFlag> flag,
       final int bufferSize, final short replication, final long blockSize,

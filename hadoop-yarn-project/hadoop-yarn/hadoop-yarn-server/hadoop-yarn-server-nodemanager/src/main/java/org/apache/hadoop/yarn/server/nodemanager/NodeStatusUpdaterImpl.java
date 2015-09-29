@@ -310,18 +310,28 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
   @VisibleForTesting
   protected void registerWithRM()
       throws YarnException, IOException {
-    List<NMContainerStatus> containerReports = getNMContainerStatuses();
+    RegisterNodeManagerResponse regNMResponse;
     Set<NodeLabel> nodeLabels = nodeLabelsHandler.getNodeLabelsForRegistration();
-    RegisterNodeManagerRequest request =
-        RegisterNodeManagerRequest.newInstance(nodeId, httpPort, totalResource,
-            nodeManagerVersionId, containerReports, getRunningApplications(),
-            nodeLabels);
-    if (containerReports != null) {
-      LOG.info("Registering with RM using containers :" + containerReports);
+ 
+    // Synchronize NM-RM registration with
+    // ContainerManagerImpl#increaseContainersResource and
+    // ContainerManagerImpl#startContainers to avoid race condition
+    // during RM recovery
+    synchronized (this.context) {
+      List<NMContainerStatus> containerReports = getNMContainerStatuses();
+      RegisterNodeManagerRequest request =
+          RegisterNodeManagerRequest.newInstance(nodeId, httpPort, totalResource,
+              nodeManagerVersionId, containerReports, getRunningApplications(),
+              nodeLabels);
+      if (containerReports != null) {
+        LOG.info("Registering with RM using containers :" + containerReports);
+      }
+      regNMResponse =
+          resourceTracker.registerNodeManager(request);
+      // Make sure rmIdentifier is set before we release the lock
+      this.rmIdentifier = regNMResponse.getRMIdentifier();
     }
-    RegisterNodeManagerResponse regNMResponse =
-        resourceTracker.registerNodeManager(request);
-    this.rmIdentifier = regNMResponse.getRMIdentifier();
+
     // if the Resource Manager instructs NM to shutdown.
     if (NodeAction.SHUTDOWN.equals(regNMResponse.getNodeAction())) {
       String message =
@@ -418,10 +428,12 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
     List<ContainerStatus> containersStatuses = getContainerStatuses();
     ResourceUtilization containersUtilization = getContainersUtilization();
     ResourceUtilization nodeUtilization = getNodeUtilization();
+    List<org.apache.hadoop.yarn.api.records.Container> increasedContainers
+        = getIncreasedContainers();
     NodeStatus nodeStatus =
         NodeStatus.newInstance(nodeId, responseId, containersStatuses,
           createKeepAliveApplicationList(), nodeHealthStatus,
-          containersUtilization, nodeUtilization);
+          containersUtilization, nodeUtilization, increasedContainers);
 
     return nodeStatus;
   }
@@ -446,6 +458,21 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
     NodeResourceMonitorImpl nodeResourceMonitor =
         (NodeResourceMonitorImpl) this.context.getNodeResourceMonitor();
     return nodeResourceMonitor.getUtilization();
+  }
+
+  /* Get the containers whose resource has been increased since last
+   * NM-RM heartbeat.
+   */
+  private List<org.apache.hadoop.yarn.api.records.Container>
+      getIncreasedContainers() {
+    List<org.apache.hadoop.yarn.api.records.Container>
+        increasedContainers = new ArrayList<>(
+            this.context.getIncreasedContainers().values());
+    for (org.apache.hadoop.yarn.api.records.Container
+        container : increasedContainers) {
+      this.context.getIncreasedContainers().remove(container.getId());
+    }
+    return increasedContainers;
   }
 
   // Iterate through the NMContext and clone and get all the containers'
@@ -765,6 +792,14 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
               ((NMContext) context)
                 .setSystemCrendentialsForApps(parseCredentials(systemCredentials));
             }
+
+            List<org.apache.hadoop.yarn.api.records.Container>
+                containersToDecrease = response.getContainersToDecrease();
+            if (!containersToDecrease.isEmpty()) {
+              dispatcher.getEventHandler().handle(
+                  new CMgrDecreaseContainersResourceEvent(containersToDecrease)
+              );
+            }
           } catch (ConnectException e) {
             //catch and throw the exception if tried MAX wait time to connect RM
             dispatcher.getEventHandler().handle(
@@ -897,6 +932,9 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
     private final NodeLabelsProvider nodeLabelsProvider;
     private Set<NodeLabel> previousNodeLabels;
     private boolean updatedLabelsSentToRM;
+    private long lastNodeLabelSendFailMills = 0L;
+    // TODO : Need to check which conf to use.Currently setting as 1 min
+    private static final long FAILEDLABELRESENDINTERVAL = 60000;
 
     @Override
     public Set<NodeLabel> getNodeLabelsForRegistration() {
@@ -938,12 +976,15 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
       // take some action only on modification of labels
       boolean areNodeLabelsUpdated =
           nodeLabelsForHeartbeat.size() != previousNodeLabels.size()
-              || !previousNodeLabels.containsAll(nodeLabelsForHeartbeat);
+              || !previousNodeLabels.containsAll(nodeLabelsForHeartbeat)
+              || checkResendLabelOnFailure();
 
       updatedLabelsSentToRM = false;
       if (areNodeLabelsUpdated) {
         previousNodeLabels = nodeLabelsForHeartbeat;
         try {
+          LOG.info("Modified labels from provider: "
+              + StringUtils.join(",", previousNodeLabels));
           validateNodeLabels(nodeLabelsForHeartbeat);
           updatedLabelsSentToRM = true;
         } catch (IOException e) {
@@ -980,16 +1021,33 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
       }
     }
 
+    /*
+     * In case of failure when RM doesnt accept labels need to resend Labels to
+     * RM. This method checks whether we need to resend
+     */
+    public boolean checkResendLabelOnFailure() {
+      if (lastNodeLabelSendFailMills > 0L) {
+        long lastFailTimePassed =
+            System.currentTimeMillis() - lastNodeLabelSendFailMills;
+        if (lastFailTimePassed > FAILEDLABELRESENDINTERVAL) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     @Override
     public void verifyRMHeartbeatResponseForNodeLabels(
         NodeHeartbeatResponse response) {
       if (updatedLabelsSentToRM) {
         if (response.getAreNodeLabelsAcceptedByRM()) {
+          lastNodeLabelSendFailMills = 0L;
           LOG.info("Node Labels {" + StringUtils.join(",", previousNodeLabels)
               + "} were Accepted by RM ");
         } else {
           // case where updated labels from NodeLabelsProvider is sent to RM and
           // RM rejected the labels
+          lastNodeLabelSendFailMills = System.currentTimeMillis();
           LOG.error(
               "NM node labels {" + StringUtils.join(",", previousNodeLabels)
                   + "} were not accepted by RM and message from RM : "

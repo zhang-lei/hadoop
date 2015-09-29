@@ -51,6 +51,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.shell.Command;
 import org.apache.hadoop.fs.shell.CommandFormat;
 import org.apache.hadoop.fs.StorageType;
+import org.apache.hadoop.hdfs.DFSUtilClient;
 import org.apache.hadoop.hdfs.HAUtilClient;
 import org.apache.hadoop.hdfs.client.BlockReportOptions;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
@@ -59,7 +60,7 @@ import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.apache.hadoop.hdfs.HAUtil;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
 import org.apache.hadoop.hdfs.NameNodeProxies;
-import org.apache.hadoop.hdfs.NameNodeProxies.ProxyAndInfo;
+import org.apache.hadoop.hdfs.NameNodeProxiesClient.ProxyAndInfo;
 import org.apache.hadoop.hdfs.protocol.ClientDatanodeProtocol;
 import org.apache.hadoop.hdfs.protocol.ClientProtocol;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
@@ -418,6 +419,7 @@ public class DFSAdmin extends FsShell {
     "\t[-refreshNamenodes datanode_host:ipc_port]\n"+
     "\t[-deleteBlockPool datanode_host:ipc_port blockpoolId [force]]\n"+
     "\t[-setBalancerBandwidth <bandwidth in bytes per second>]\n" +
+    "\t[-getBalancerBandwidth <datanode_host:ipc_port>]\n" +
     "\t[-fetchImage <local directory>]\n" +
     "\t[-allowSnapshot <snapshotDir>]\n" +
     "\t[-disallowSnapshot <snapshotDir>]\n" +
@@ -851,6 +853,11 @@ public class DFSAdmin extends FsShell {
       return exitCode;
     }
 
+    if (bandwidth < 0) {
+      System.err.println("Bandwidth should be a non-negative integer");
+      return exitCode;
+    }
+
     FileSystem fs = getFS();
     if (!(fs instanceof DistributedFileSystem)) {
       System.err.println("FileSystem is " + fs.getUri());
@@ -879,6 +886,26 @@ public class DFSAdmin extends FsShell {
     exitCode = 0;
 
     return exitCode;
+  }
+
+  /**
+   * Command to get balancer bandwidth for the given datanode. Usage: hdfs
+   * dfsadmin -getBalancerBandwidth {@literal <datanode_host:ipc_port>}
+   * @param argv List of of command line parameters.
+   * @param idx The index of the command that is being processed.
+   * @exception IOException
+   */
+  public int getBalancerBandwidth(String[] argv, int idx) throws IOException {
+    ClientDatanodeProtocol dnProxy = getDataNodeProxy(argv[idx]);
+    try {
+      long bandwidth = dnProxy.getBalancerBandwidth();
+      System.out.println("Balancer bandwidth is " + bandwidth
+          + " bytes per second.");
+    } catch (IOException ioe) {
+      System.err.println("Datanode unreachable.");
+      return -1;
+    }
+    return 0;
   }
 
   /**
@@ -1019,7 +1046,13 @@ public class DFSAdmin extends FsShell {
       "\t\tthat will be used by each datanode. This value overrides\n" +
       "\t\tthe dfs.balance.bandwidthPerSec parameter.\n\n" +
       "\t\t--- NOTE: The new value is not persistent on the DataNode.---\n";
-    
+
+    String getBalancerBandwidth = "-getBalancerBandwidth <datanode_host:ipc_port>:\n" +
+        "\tGet the network bandwidth for the given datanode.\n" +
+        "\tThis is the maximum network bandwidth used by the datanode\n" +
+        "\tduring HDFS block balancing.\n\n" +
+        "\t--- NOTE: This value is not persistent on the DataNode.---\n";
+
     String fetchImage = "-fetchImage <local directory>:\n" +
       "\tDownloads the most recent fsimage from the Name Node and saves it in" +
       "\tthe specified local directory.\n";
@@ -1097,6 +1130,8 @@ public class DFSAdmin extends FsShell {
       System.out.println(deleteBlockPool);
     } else if ("setBalancerBandwidth".equals(cmd)) {
       System.out.println(setBalancerBandwidth);
+    } else if ("getBalancerBandwidth".equals(cmd)) {
+      System.out.println(getBalancerBandwidth);
     } else if ("fetchImage".equals(cmd)) {
       System.out.println(fetchImage);
     } else if ("allowSnapshot".equalsIgnoreCase(cmd)) {
@@ -1134,6 +1169,7 @@ public class DFSAdmin extends FsShell {
       System.out.println(refreshNamenodes);
       System.out.println(deleteBlockPool);
       System.out.println(setBalancerBandwidth);
+      System.out.println(getBalancerBandwidth);
       System.out.println(fetchImage);
       System.out.println(allowSnapshot);
       System.out.println(disallowSnapshot);
@@ -1676,6 +1712,9 @@ public class DFSAdmin extends FsShell {
     } else if ("-setBalancerBandwidth".equals(cmd)) {
       System.err.println("Usage: hdfs dfsadmin"
                   + " [-setBalancerBandwidth <bandwidth in bytes per second>]");
+    } else if ("-getBalancerBandwidth".equalsIgnoreCase(cmd)) {
+      System.err.println("Usage: hdfs dfsadmin"
+          + " [-getBalancerBandwidth <datanode_host:ipc_port>]");
     } else if ("-fetchImage".equals(cmd)) {
       System.err.println("Usage: hdfs dfsadmin"
           + " [-fetchImage <local directory>]");
@@ -1811,6 +1850,11 @@ public class DFSAdmin extends FsShell {
         printUsage(cmd);
         return exitCode;
       }
+    } else if ("-getBalancerBandwidth".equalsIgnoreCase(cmd)) {
+      if (argv.length != 2) {
+        printUsage(cmd);
+        return exitCode;
+      }
     } else if ("-fetchImage".equals(cmd)) {
       if (argv.length != 2) {
         printUsage(cmd);
@@ -1896,6 +1940,8 @@ public class DFSAdmin extends FsShell {
         exitCode = deleteBlockPool(argv, i);
       } else if ("-setBalancerBandwidth".equals(cmd)) {
         exitCode = setBalancerBandwidth(argv, i);
+      } else if ("-getBalancerBandwidth".equals(cmd)) {
+        exitCode = getBalancerBandwidth(argv, i);
       } else if ("-fetchImage".equals(cmd)) {
         exitCode = fetchImage(argv, i);
       } else if ("-shutdownDatanode".equals(cmd)) {
@@ -1962,7 +2008,7 @@ public class DFSAdmin extends FsShell {
 
     // Create the client
     ClientDatanodeProtocol dnProtocol =     
-        DFSUtil.createClientDatanodeProtocolProxy(datanodeAddr, getUGI(), conf,
+        DFSUtilClient.createClientDatanodeProtocolProxy(datanodeAddr, getUGI(), conf,
             NetUtils.getSocketFactory(conf, ClientDatanodeProtocol.class));
     return dnProtocol;
   }
