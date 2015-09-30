@@ -27,7 +27,6 @@ import java.util.LinkedList;
  */
 @InterfaceAudience.Private
 public class BlockInfoContiguous extends BlockInfo {
-  public static final BlockInfoContiguous[] EMPTY_ARRAY = {};
 
   public BlockInfoContiguous(short size) {
     super(size);
@@ -35,14 +34,6 @@ public class BlockInfoContiguous extends BlockInfo {
 
   public BlockInfoContiguous(Block blk, short size) {
     super(blk, size);
-  }
-
-  /**
-   * Copy construction.
-   * @param from BlockInfoContiguous to copy from.
-   */
-  protected BlockInfoContiguous(BlockInfoContiguous from) {
-    super(from);
   }
 
   /**
@@ -64,7 +55,7 @@ public class BlockInfoContiguous extends BlockInfo {
   }
 
   @Override
-  boolean addStorage(DatanodeStorageInfo storage) {
+  boolean addStorage(DatanodeStorageInfo storage, Block reportedBlock) {
     // find the last null node
     int lastNode = ensureCapacity(1);
     setStorageInfo(lastNode, storage);
@@ -105,5 +96,15 @@ public class BlockInfoContiguous extends BlockInfo {
       }
     }
     return 0;
+  }
+
+  @Override
+  public final boolean isStriped() {
+    return false;
+  }
+
+  @Override
+  final boolean hasNoStorage() {
+    return getStorageInfo(0) == null;
   }
 }

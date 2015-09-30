@@ -64,22 +64,10 @@ public class TestBlockInfo {
 
     final DatanodeStorageInfo storage = DFSTestUtil.createDatanodeStorageInfo("storageID", "127.0.0.1");
 
-    boolean added = blockInfo.addStorage(storage);
+    boolean added = blockInfo.addStorage(storage, blockInfo);
 
     Assert.assertTrue(added);
     Assert.assertEquals(storage, blockInfo.getStorageInfo(0));
-  }
-
-  @Test
-  public void testCopyConstructor() {
-    BlockInfoContiguous old = new BlockInfoContiguous((short) 3);
-    try {
-      BlockInfoContiguous copy = new BlockInfoContiguous(old);
-      assertEquals(old.getBlockCollectionId(), copy.getBlockCollectionId());
-      assertEquals(old.getCapacity(), copy.getCapacity());
-    } catch (Exception e) {
-      Assert.fail("Copy constructor throws exception: " + e);
-    }
   }
 
   @Test

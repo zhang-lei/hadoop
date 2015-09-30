@@ -23,15 +23,16 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.primitives.Shorts;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.CodedInputStream;
-
-import static com.google.common.base.Preconditions.checkNotNull;
 
 import org.apache.hadoop.crypto.CipherOption;
 import org.apache.hadoop.crypto.CipherSuite;
@@ -71,6 +72,7 @@ import org.apache.hadoop.hdfs.protocol.DatanodeInfo.AdminStates;
 import org.apache.hadoop.hdfs.protocol.DatanodeLocalInfo;
 import org.apache.hadoop.hdfs.protocol.DirectoryListing;
 import org.apache.hadoop.hdfs.protocol.EncryptionZone;
+import org.apache.hadoop.hdfs.protocol.ErasureCodingPolicy;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.protocol.FsPermissionExtension;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
@@ -81,6 +83,7 @@ import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
 import org.apache.hadoop.hdfs.protocol.HdfsLocatedFileStatus;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.protocol.LocatedBlocks;
+import org.apache.hadoop.hdfs.protocol.LocatedStripedBlock;
 import org.apache.hadoop.hdfs.protocol.RollingUpgradeInfo;
 import org.apache.hadoop.hdfs.protocol.RollingUpgradeStatus;
 import org.apache.hadoop.hdfs.protocol.SnapshotDiffReport;
@@ -112,6 +115,8 @@ import org.apache.hadoop.hdfs.protocol.proto.ClientNamenodeProtocolProtos.SafeMo
 import org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.ShortCircuitShmIdProto;
 import org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.ShortCircuitShmSlotProto;
 import org.apache.hadoop.hdfs.protocol.proto.EncryptionZonesProtos.EncryptionZoneProto;
+import org.apache.hadoop.hdfs.protocol.proto.ErasureCodingProtos;
+import org.apache.hadoop.hdfs.protocol.proto.ErasureCodingProtos.BlockECRecoveryInfoProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.BlockProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.BlockStoragePolicyProto;
@@ -128,6 +133,7 @@ import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.DatanodeStorageProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.DatanodeStorageProto.StorageState;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.DirectoryListingProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.ExtendedBlockProto;
+import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.ErasureCodingPolicyProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.FsPermissionProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.FsServerDefaultsProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.HdfsFileStatusProto;
@@ -161,6 +167,7 @@ import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitShm.SlotId;
 import org.apache.hadoop.hdfs.util.ExactSizeInputStream;
 import org.apache.hadoop.io.EnumSetWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.erasurecode.ECSchema;
 import org.apache.hadoop.security.proto.SecurityProtos.TokenProto;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.util.DataChecksum;
@@ -497,7 +504,7 @@ public class PBHelperClient {
     return null;
   }
 
-  public static LocatedBlock convert(LocatedBlockProto proto) {
+  public static LocatedBlock convertLocatedBlockProto(LocatedBlockProto proto) {
     if (proto == null) return null;
     List<DatanodeInfoProto> locs = proto.getLocsList();
     DatanodeInfo[] targets = new DatanodeInfo[locs.size()];
@@ -517,8 +524,17 @@ public class PBHelperClient {
       storageIDs = proto.getStorageIDsList().toArray(new String[storageIDsCount]);
     }
 
+    int[] indices = null;
+    final int indexCount = proto.getBlockIndexCount();
+    if (indexCount > 0) {
+      indices = new int[indexCount];
+      for (int i = 0; i < indexCount; i++) {
+        indices[i] = proto.getBlockIndex(i);
+      }
+    }
+
     // Set values from the isCached list, re-using references from loc
-    List<DatanodeInfo> cachedLocs = new ArrayList<>(locs.size());
+    List<DatanodeInfo> cachedLocs = new ArrayList<DatanodeInfo>(locs.size());
     List<Boolean> isCachedList = proto.getIsCachedList();
     for (int i=0; i<isCachedList.size(); i++) {
       if (isCachedList.get(i)) {
@@ -526,9 +542,23 @@ public class PBHelperClient {
       }
     }
 
-    LocatedBlock lb = new LocatedBlock(convert(proto.getB()), targets,
-        storageIDs, storageTypes, proto.getOffset(), proto.getCorrupt(),
-        cachedLocs.toArray(new DatanodeInfo[0]));
+    final LocatedBlock lb;
+    if (indices == null) {
+      lb = new LocatedBlock(PBHelperClient.convert(proto.getB()), targets,
+          storageIDs, storageTypes, proto.getOffset(), proto.getCorrupt(),
+          cachedLocs.toArray(new DatanodeInfo[cachedLocs.size()]));
+    } else {
+      lb = new LocatedStripedBlock(PBHelperClient.convert(proto.getB()), targets,
+          storageIDs, storageTypes, indices, proto.getOffset(),
+          proto.getCorrupt(),
+          cachedLocs.toArray(new DatanodeInfo[cachedLocs.size()]));
+      List<TokenProto> tokenProtos = proto.getBlockTokensList();
+      Token<BlockTokenIdentifier>[] blockTokens = new Token[indices.length];
+      for (int i = 0; i < indices.length; i++) {
+        blockTokens[i] = convert(tokenProtos.get(i));
+      }
+      ((LocatedStripedBlock) lb).setBlockTokens(blockTokens);
+    }
     lb.setBlockToken(convert(proto.getBlockToken()));
 
     return lb;
@@ -591,11 +621,12 @@ public class PBHelperClient {
   public static LocatedBlocks convert(LocatedBlocksProto lb) {
     return new LocatedBlocks(
         lb.getFileLength(), lb.getUnderConstruction(),
-        convertLocatedBlock(lb.getBlocksList()),
-        lb.hasLastBlock() ? convert(lb.getLastBlock()) : null,
+        convertLocatedBlocks(lb.getBlocksList()),
+        lb.hasLastBlock() ?
+            convertLocatedBlockProto(lb.getLastBlock()) : null,
         lb.getIsLastBlockComplete(),
-        lb.hasFileEncryptionInfo() ? convert(lb.getFileEncryptionInfo()) :
-            null);
+        lb.hasFileEncryptionInfo() ? convert(lb.getFileEncryptionInfo()) : null,
+        lb.hasEcPolicy() ? convertErasureCodingPolicy(lb.getEcPolicy()) : null);
   }
 
   public static BlockStoragePolicy[] convertStoragePolicies(
@@ -716,23 +747,41 @@ public class PBHelperClient {
   }
 
   // Located Block Arrays and Lists
-  public static LocatedBlockProto[] convertLocatedBlock(LocatedBlock[] lb) {
+  public static LocatedBlockProto[] convertLocatedBlocks(LocatedBlock[] lb) {
     if (lb == null) return null;
-    return convertLocatedBlock2(Arrays.asList(lb)).toArray(
-        new LocatedBlockProto[lb.length]);
+    return convertLocatedBlocks2(Arrays.asList(lb))
+        .toArray(new LocatedBlockProto[lb.length]);
   }
 
-  public static List<LocatedBlockProto> convertLocatedBlock2(List<LocatedBlock> lb) {
+  public static LocatedBlock[] convertLocatedBlocks(LocatedBlockProto[] lb) {
+    if (lb == null) return null;
+    return convertLocatedBlocks(Arrays.asList(lb))
+        .toArray(new LocatedBlock[lb.length]);
+  }
+
+  public static List<LocatedBlock> convertLocatedBlocks(
+      List<LocatedBlockProto> lb) {
     if (lb == null) return null;
     final int len = lb.size();
-    List<LocatedBlockProto> result = new ArrayList<>(len);
-    for (int i = 0; i < len; ++i) {
-      result.add(convert(lb.get(i)));
+    List<LocatedBlock> result = new ArrayList<>(len);
+    for (LocatedBlockProto aLb : lb) {
+      result.add(convertLocatedBlockProto(aLb));
     }
     return result;
   }
 
-  public static LocatedBlockProto convert(LocatedBlock b) {
+  public static List<LocatedBlockProto> convertLocatedBlocks2(
+      List<LocatedBlock> lb) {
+    if (lb == null) return null;
+    final int len = lb.size();
+    List<LocatedBlockProto> result = new ArrayList<>(len);
+    for (LocatedBlock aLb : lb) {
+      result.add(convertLocatedBlock(aLb));
+    }
+    return result;
+  }
+
+  public static LocatedBlockProto convertLocatedBlock(LocatedBlock b) {
     if (b == null) return null;
     Builder builder = LocatedBlockProto.newBuilder();
     DatanodeInfo[] locs = b.getLocations();
@@ -740,7 +789,7 @@ public class PBHelperClient {
         Lists.newLinkedList(Arrays.asList(b.getCachedLocations()));
     for (int i = 0; i < locs.length; i++) {
       DatanodeInfo loc = locs[i];
-      builder.addLocs(i, convert(loc));
+      builder.addLocs(i, PBHelperClient.convert(loc));
       boolean locIsCached = cachedLocs.contains(loc);
       builder.addIsCached(locIsCached);
       if (locIsCached) {
@@ -749,21 +798,30 @@ public class PBHelperClient {
     }
     Preconditions.checkArgument(cachedLocs.size() == 0,
         "Found additional cached replica locations that are not in the set of"
-        + " storage-backed locations!");
+            + " storage-backed locations!");
 
     StorageType[] storageTypes = b.getStorageTypes();
     if (storageTypes != null) {
-      for (int i = 0; i < storageTypes.length; ++i) {
-        builder.addStorageTypes(convertStorageType(storageTypes[i]));
+      for (StorageType storageType : storageTypes) {
+        builder.addStorageTypes(convertStorageType(storageType));
       }
     }
     final String[] storageIDs = b.getStorageIDs();
     if (storageIDs != null) {
       builder.addAllStorageIDs(Arrays.asList(storageIDs));
     }
+    if (b instanceof LocatedStripedBlock) {
+      LocatedStripedBlock sb = (LocatedStripedBlock) b;
+      int[] indices = sb.getBlockIndices();
+      Token<BlockTokenIdentifier>[] blockTokens = sb.getBlockTokens();
+      for (int i = 0; i < indices.length; i++) {
+        builder.addBlockIndex(indices[i]);
+        builder.addBlockTokens(PBHelperClient.convert(blockTokens[i]));
+      }
+    }
 
-    return builder.setB(convert(b.getBlock()))
-        .setBlockToken(convert(b.getBlockToken()))
+    return builder.setB(PBHelperClient.convert(b.getBlock()))
+        .setBlockToken(PBHelperClient.convert(b.getBlockToken()))
         .setCorrupt(b.isCorrupt()).setOffset(b.getStartOffset()).build();
   }
 
@@ -897,7 +955,7 @@ public class PBHelperClient {
     final int len = lb.size();
     List<LocatedBlock> result = new ArrayList<>(len);
     for (int i = 0; i < len; ++i) {
-      result.add(convert(lb.get(i)));
+      result.add(convertLocatedBlockProto(lb.get(i)));
     }
     return result;
   }
@@ -1087,7 +1145,7 @@ public class PBHelperClient {
 
   public static CachePoolInfo convert (CachePoolInfoProto proto) {
     // Pool name is a required field, the rest are optional
-    String poolName = checkNotNull(proto.getPoolName());
+    String poolName = Preconditions.checkNotNull(proto.getPoolName());
     CachePoolInfo info = new CachePoolInfo(poolName);
     if (proto.hasOwnerName()) {
         info.setOwnerName(proto.getOwnerName());
@@ -1341,7 +1399,8 @@ public class PBHelperClient {
         fs.hasChildrenNum() ? fs.getChildrenNum() : -1,
         fs.hasFileEncryptionInfo() ? convert(fs.getFileEncryptionInfo()) : null,
         fs.hasStoragePolicy() ? (byte) fs.getStoragePolicy()
-            : HdfsConstants.BLOCK_STORAGE_POLICY_ID_UNSPECIFIED);
+            : HdfsConstants.BLOCK_STORAGE_POLICY_ID_UNSPECIFIED,
+    fs.hasEcPolicy() ? convertErasureCodingPolicy(fs.getEcPolicy()) : null);
   }
 
   public static CorruptFileBlocks convert(CorruptFileBlocksProto c) {
@@ -1655,14 +1714,18 @@ public class PBHelperClient {
     LocatedBlocksProto.Builder builder =
         LocatedBlocksProto.newBuilder();
     if (lb.getLastLocatedBlock() != null) {
-      builder.setLastBlock(convert(lb.getLastLocatedBlock()));
+      builder.setLastBlock(
+          convertLocatedBlock(lb.getLastLocatedBlock()));
     }
     if (lb.getFileEncryptionInfo() != null) {
       builder.setFileEncryptionInfo(convert(lb.getFileEncryptionInfo()));
     }
+    if (lb.getErasureCodingPolicy() != null) {
+      builder.setEcPolicy(convertErasureCodingPolicy(lb.getErasureCodingPolicy()));
+    }
     return builder.setFileLength(lb.getFileLength())
         .setUnderConstruction(lb.isUnderConstruction())
-        .addAllBlocks(convertLocatedBlock2(lb.getLocatedBlocks()))
+        .addAllBlocks(convertLocatedBlocks2(lb.getLocatedBlocks()))
         .setIsLastBlockComplete(lb.isLastBlockComplete()).build();
   }
 
@@ -1762,6 +1825,9 @@ public class PBHelperClient {
       if (locations != null) {
         builder.setLocations(convert(locations));
       }
+    }
+    if(fs.getErasureCodingPolicy() != null) {
+      builder.setEcPolicy(convertErasureCodingPolicy(fs.getErasureCodingPolicy()));
     }
     return builder.build();
   }
@@ -2325,5 +2391,45 @@ public class PBHelperClient {
           .addAllDatanodes(convert(targets[i])).build();
     }
     return Arrays.asList(ret);
+  }
+
+  public static ECSchema convertECSchema(HdfsProtos.ECSchemaProto schema) {
+    List<HdfsProtos.ECSchemaOptionEntryProto> optionsList = schema.getOptionsList();
+    Map<String, String> options = new HashMap<>(optionsList.size());
+    for (HdfsProtos.ECSchemaOptionEntryProto option : optionsList) {
+      options.put(option.getKey(), option.getValue());
+    }
+    return new ECSchema(schema.getCodecName(), schema.getDataUnits(),
+        schema.getParityUnits(), options);
+  }
+
+  public static HdfsProtos.ECSchemaProto convertECSchema(ECSchema schema) {
+    HdfsProtos.ECSchemaProto.Builder builder = HdfsProtos.ECSchemaProto.newBuilder()
+        .setCodecName(schema.getCodecName())
+        .setDataUnits(schema.getNumDataUnits())
+        .setParityUnits(schema.getNumParityUnits());
+    Set<Map.Entry<String, String>> entrySet = schema.getExtraOptions().entrySet();
+    for (Map.Entry<String, String> entry : entrySet) {
+      builder.addOptions(HdfsProtos.ECSchemaOptionEntryProto.newBuilder()
+          .setKey(entry.getKey()).setValue(entry.getValue()).build());
+    }
+    return builder.build();
+  }
+
+  public static ErasureCodingPolicy convertErasureCodingPolicy(
+      ErasureCodingPolicyProto policy) {
+    return new ErasureCodingPolicy(policy.getName(),
+        convertECSchema(policy.getSchema()),
+        policy.getCellSize());
+  }
+
+  public static ErasureCodingPolicyProto convertErasureCodingPolicy(
+      ErasureCodingPolicy policy) {
+    ErasureCodingPolicyProto.Builder builder = ErasureCodingPolicyProto
+        .newBuilder()
+        .setName(policy.getName())
+        .setSchema(convertECSchema(policy.getSchema()))
+        .setCellSize(policy.getCellSize());
+    return builder.build();
   }
 }

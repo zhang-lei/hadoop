@@ -36,6 +36,7 @@ import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_SERVER_HTTPS_KEYSTORE_PAS
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_SERVER_HTTPS_TRUSTSTORE_PASSWORD_KEY;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
@@ -88,6 +89,7 @@ import com.google.common.base.Charsets;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import com.google.protobuf.BlockingService;
 
 @InterfaceAudience.Private
@@ -732,20 +734,29 @@ public class DFSUtil {
         }
       }
     }
-    
-    // Add the default URI if it is an HDFS URI.
-    URI defaultUri = FileSystem.getDefaultUri(conf);
-    // checks if defaultUri is ip:port format
-    // and convert it to hostname:port format
-    if (defaultUri != null && (defaultUri.getPort() != -1)) {
-      defaultUri = createUri(defaultUri.getScheme(),
-          NetUtils.createSocketAddr(defaultUri.getHost(), 
-              defaultUri.getPort()));
-    }
-    if (defaultUri != null &&
-        HdfsConstants.HDFS_URI_SCHEME.equals(defaultUri.getScheme()) &&
-        !nonPreferredUris.contains(defaultUri)) {
-      ret.add(defaultUri);
+
+    // Add the default URI if it is an HDFS URI and we haven't come up with a
+    // valid non-nameservice NN address yet.  Consider the servicerpc-address
+    // and rpc-address to be the "unnamed" nameservice.  defaultFS is our
+    // fallback when rpc-address isn't given.  We therefore only want to add
+    // the defaultFS when neither the servicerpc-address (which is preferred)
+    // nor the rpc-address (which overrides defaultFS) is given.
+    if (!uriFound) {
+      URI defaultUri = FileSystem.getDefaultUri(conf);
+
+      // checks if defaultUri is ip:port format
+      // and convert it to hostname:port format
+      if (defaultUri != null && (defaultUri.getPort() != -1)) {
+        defaultUri = createUri(defaultUri.getScheme(),
+            NetUtils.createSocketAddr(defaultUri.getHost(),
+                defaultUri.getPort()));
+      }
+
+      if (defaultUri != null &&
+          HdfsConstants.HDFS_URI_SCHEME.equals(defaultUri.getScheme()) &&
+          !nonPreferredUris.contains(defaultUri)) {
+        ret.add(defaultUri);
+      }
     }
     
     return ret;
@@ -1439,5 +1450,4 @@ public class DFSUtil {
         .createKeyProviderCryptoExtension(keyProvider);
     return cryptoProvider;
   }
-
 }

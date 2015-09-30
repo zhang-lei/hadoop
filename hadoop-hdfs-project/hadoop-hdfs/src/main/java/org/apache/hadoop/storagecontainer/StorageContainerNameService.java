@@ -19,6 +19,7 @@
 package org.apache.hadoop.storagecontainer;
 
 import org.apache.hadoop.hdfs.protocol.Block;
+import org.apache.hadoop.hdfs.protocol.ErasureCodingPolicy;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockCollection;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
 import org.apache.hadoop.hdfs.server.namenode.CacheManager;
@@ -28,6 +29,7 @@ import org.apache.hadoop.hdfs.server.namenode.ha.HAContext;
 import org.apache.hadoop.ipc.StandbyException;
 import org.apache.hadoop.security.AccessControlException;
 
+import java.io.IOException;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
@@ -88,6 +90,12 @@ public class StorageContainerNameService implements Namesystem {
   public void checkOperation(NameNode.OperationCategory read)
     throws StandbyException {
     // HA mode is not supported
+  }
+
+  @Override
+  public ErasureCodingPolicy getErasureCodingPolicyForPath(String src)
+      throws IOException {
+    return null;
   }
 
   @Override
@@ -157,10 +165,9 @@ public class StorageContainerNameService implements Namesystem {
     return false;
   }
 
-
   @Override
-  public void incrementSafeBlockCount(int replication) {
-    // Do nothing
+  public void incrementSafeBlockCount(int replication, BlockInfo storedBlock) {
+  // Do nothing
   }
 
   @Override
