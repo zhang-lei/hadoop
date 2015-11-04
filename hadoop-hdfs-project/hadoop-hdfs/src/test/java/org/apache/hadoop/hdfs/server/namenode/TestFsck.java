@@ -625,9 +625,11 @@ public class TestFsck {
       assertTrue(outStr.contains(NamenodeFsck.HEALTHY_STATUS));
       assertFalse(outStr.contains("OPENFORWRITE")); 
       // Use -openforwrite option to list open files
-      outStr = runFsck(conf, 0, true, topDir, "-openforwrite");
+      outStr = runFsck(conf, 0, true, topDir, "-files", "-blocks",
+          "-locations", "-openforwrite");
       System.out.println(outStr);
       assertTrue(outStr.contains("OPENFORWRITE"));
+      assertTrue(outStr.contains("Under Construction Block:"));
       assertTrue(outStr.contains("openFile"));
       // Close the file
       out.close(); 
@@ -636,12 +638,84 @@ public class TestFsck {
       System.out.println(outStr);
       assertTrue(outStr.contains(NamenodeFsck.HEALTHY_STATUS));
       assertFalse(outStr.contains("OPENFORWRITE"));
+      assertFalse(outStr.contains("Under Construction Block:"));
       util.cleanup(fs, topDir);
       if (fs != null) {try{fs.close();} catch(Exception e){}}
       cluster.shutdown();
     } finally {
       if (fs != null) {try{fs.close();} catch(Exception e){}}
       if (cluster != null) { cluster.shutdown(); }
+    }
+  }
+
+  @Test
+  public void testFsckOpenECFiles() throws Exception {
+    DFSTestUtil util = new DFSTestUtil.Builder().setName("TestFsckECFile").
+        setNumFiles(4).build();
+    MiniDFSCluster cluster = null;
+    FileSystem fs = null;
+    String outStr;
+    try {
+      Configuration conf = new HdfsConfiguration();
+      conf.setLong(DFSConfigKeys.DFS_BLOCKREPORT_INTERVAL_MSEC_KEY, 10000L);
+      cluster = new MiniDFSCluster.Builder(conf).numDataNodes(10).build();
+      cluster.getFileSystem().getClient().setErasureCodingPolicy("/", null);
+      String topDir = "/myDir";
+      byte[] randomBytes = new byte[3000000];
+      int seed = 42;
+      new Random(seed).nextBytes(randomBytes);
+      cluster.waitActive();
+      fs = cluster.getFileSystem();
+      util.createFiles(fs, topDir);
+
+      // Open a EC file for writing and do not close for now
+      Path openFile = new Path(topDir + "/openECFile");
+      FSDataOutputStream out = fs.create(openFile);
+      int writeCount = 0;
+      while (writeCount != 300) {
+        out.write(randomBytes);
+        writeCount++;
+      }
+
+      // We expect the filesystem to be HEALTHY and show one open file
+      outStr = runFsck(conf, 0, true, openFile.toString(), "-files",
+          "-blocks", "-openforwrite");
+      assertTrue(outStr.contains(NamenodeFsck.HEALTHY_STATUS));
+      assertTrue(outStr.contains("OPENFORWRITE"));
+      assertTrue(outStr.contains("Live_repl=9"));
+      assertTrue(outStr.contains("Expected_repl=9"));
+
+      // Use -openforwrite option to list open files
+      outStr = runFsck(conf, 0, true, openFile.toString(), "-files", "-blocks",
+          "-locations", "-openforwrite", "-replicaDetails");
+      assertTrue(outStr.contains(NamenodeFsck.HEALTHY_STATUS));
+      assertTrue(outStr.contains("OPENFORWRITE"));
+      assertTrue(outStr.contains("Live_repl=9"));
+      assertTrue(outStr.contains("Expected_repl=9"));
+      assertTrue(outStr.contains("Under Construction Block:"));
+
+      // Close the file
+      out.close();
+
+      // Now, fsck should show HEALTHY fs and should not show any open files
+      outStr = runFsck(conf, 0, true, openFile.toString(), "-files", "-blocks",
+          "-locations", "-racks", "-replicaDetails");
+      assertTrue(outStr.contains(NamenodeFsck.HEALTHY_STATUS));
+      assertFalse(outStr.contains("OPENFORWRITE"));
+      assertFalse(outStr.contains("Under Construction Block:"));
+      assertFalse(outStr.contains("Expected_repl=9"));
+      assertTrue(outStr.contains("Live_repl=9"));
+      util.cleanup(fs, topDir);
+    } finally {
+      if (fs != null) {
+        try {
+          fs.close();
+        } catch (Exception e) {
+        }
+      }
+      if (cluster != null) {
+        cluster.shutdown();
+      }
     }
   }
 
@@ -1716,6 +1790,94 @@ public class TestFsck {
     } finally {
       if (fs != null) {try{fs.close();} catch(Exception e){}}
       if (cluster != null) { cluster.shutdown(); }
+    }
+  }
+
+  /**
+   * Test that corrupted snapshot files are listed with full dir.
+   */
+  @Test
+  public void testFsckListCorruptSnapshotFiles() throws Exception {
+    Configuration conf = new Configuration();
+    conf.setLong(DFSConfigKeys.DFS_BLOCKREPORT_INTERVAL_MSEC_KEY, 1000);
+    conf.setInt(DFSConfigKeys.DFS_DATANODE_DIRECTORYSCAN_INTERVAL_KEY, 1);
+    DistributedFileSystem hdfs = null;
+    final short REPL_FACTOR = 1;
+
+    MiniDFSCluster cluster = null;
+    try {
+      int numFiles = 3;
+      int numSnapshots = 0;
+      cluster = new MiniDFSCluster.Builder(conf).build();
+      cluster.waitActive();
+      hdfs = cluster.getFileSystem();
+      DFSTestUtil util = new DFSTestUtil.Builder().
+          setName("testGetCorruptFiles").setNumFiles(numFiles).setMaxLevels(1).
+          setMaxSize(1024).build();
+
+      util.createFiles(hdfs, "/corruptData", (short) 1);
+      final Path fp = new Path("/corruptData/file");
+      util.createFile(hdfs, fp, 1024, REPL_FACTOR, 1000L);
+      numFiles++;
+      util.waitReplication(hdfs, "/corruptData", (short) 1);
+
+      hdfs.allowSnapshot(new Path("/corruptData"));
+      hdfs.createSnapshot(new Path("/corruptData"), "mySnapShot");
+      numSnapshots = numFiles;
+
+      String outStr =
+          runFsck(conf, 0, false, "/corruptData", "-list-corruptfileblocks");
+      System.out.println("1. good fsck out: " + outStr);
+      assertTrue(outStr.contains("has 0 CORRUPT files"));
+      // delete the blocks
+      final String bpid = cluster.getNamesystem().getBlockPoolId();
+      for (int i=0; i<numFiles; i++) {
+        for (int j=0; j<=1; j++) {
+          File storageDir = cluster.getInstanceStorageDir(i, j);
+          File data_dir = MiniDFSCluster.getFinalizedDir(storageDir, bpid);
+          List<File> metadataFiles = MiniDFSCluster.getAllBlockMetadataFiles(
+              data_dir);
+          if (metadataFiles == null)
+            continue;
+          for (File metadataFile : metadataFiles) {
+            File blockFile = Block.metaToBlockFile(metadataFile);
+            assertTrue("Cannot remove file.", blockFile.delete());
+            assertTrue("Cannot remove file.", metadataFile.delete());
+          }
+        }
+      }
+      // Delete file when it has a snapshot
+      hdfs.delete(fp, false);
+      numFiles--;
+
+      // wait for the namenode to see the corruption
+      final NamenodeProtocols namenode = cluster.getNameNodeRpc();
+      CorruptFileBlocks corruptFileBlocks = namenode
+          .listCorruptFileBlocks("/corruptData", null);
+      int numCorrupt = corruptFileBlocks.getFiles().length;
+      while (numCorrupt == 0) {
+        Thread.sleep(1000);
+        corruptFileBlocks = namenode
+            .listCorruptFileBlocks("/corruptData", null);
+        numCorrupt = corruptFileBlocks.getFiles().length;
+      }
+
+      // with -includeSnapshots all files are reported
+      outStr = runFsck(conf, -1, true, "/corruptData",
+          "-list-corruptfileblocks", "-includeSnapshots");
+      System.out.println("2. bad fsck include snapshot out: " + outStr);
+      assertTrue(outStr
+          .contains("has " + (numFiles + numSnapshots) + " CORRUPT files"));
+      assertTrue(outStr.contains("/.snapshot/"));
+
+      // without -includeSnapshots only non-snapshots are reported
+      outStr =
+          runFsck(conf, -1, true, "/corruptData", "-list-corruptfileblocks");
+      System.out.println("3. bad fsck exclude snapshot out: " + outStr);
+      assertTrue(outStr.contains("has " + numFiles + " CORRUPT files"));
+      assertFalse(outStr.contains("/.snapshot/"));
+    } finally {
+      if (cluster != null) {cluster.shutdown();}
     }
   }
 }

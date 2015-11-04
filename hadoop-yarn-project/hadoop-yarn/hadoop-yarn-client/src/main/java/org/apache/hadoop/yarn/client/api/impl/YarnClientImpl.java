@@ -42,6 +42,7 @@ import org.apache.hadoop.security.SecurityUtil;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.TokenIdentifier;
 import org.apache.hadoop.yarn.api.ApplicationClientProtocol;
+import org.apache.hadoop.yarn.api.protocolrecords.FailApplicationAttemptRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.GetApplicationAttemptReportRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.GetApplicationAttemptReportResponse;
 import org.apache.hadoop.yarn.api.protocolrecords.GetApplicationAttemptsRequest;
@@ -76,9 +77,9 @@ import org.apache.hadoop.yarn.api.protocolrecords.ReservationSubmissionRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.ReservationSubmissionResponse;
 import org.apache.hadoop.yarn.api.protocolrecords.ReservationUpdateRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.ReservationUpdateResponse;
+import org.apache.hadoop.yarn.api.protocolrecords.SignalContainerRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.SubmitApplicationRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.UpdateApplicationPriorityRequest;
-import org.apache.hadoop.yarn.api.protocolrecords.UpdateApplicationPriorityResponse;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptReport;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
@@ -94,6 +95,7 @@ import org.apache.hadoop.yarn.api.records.NodeState;
 import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.QueueInfo;
 import org.apache.hadoop.yarn.api.records.QueueUserACLInfo;
+import org.apache.hadoop.yarn.api.records.SignalContainerCommand;
 import org.apache.hadoop.yarn.api.records.Token;
 import org.apache.hadoop.yarn.api.records.YarnApplicationState;
 import org.apache.hadoop.yarn.api.records.YarnClusterMetrics;
@@ -379,6 +381,16 @@ public class YarnClientImpl extends YarnClient {
   @VisibleForTesting
   protected boolean isSecurityEnabled() {
     return UserGroupInformation.isSecurityEnabled();
+  }
+
+  @Override
+  public void failApplicationAttempt(ApplicationAttemptId attemptId)
+      throws YarnException, IOException {
+    LOG.info("Failing application attempt " + attemptId);
+    FailApplicationAttemptRequest request =
+        Records.newRecord(FailApplicationAttemptRequest.class);
+    request.setApplicationAttemptId(attemptId);
+    rmClient.failApplicationAttempt(request);
   }
 
   @Override
@@ -825,5 +837,15 @@ public class YarnClientImpl extends YarnClient {
     UpdateApplicationPriorityRequest request =
         UpdateApplicationPriorityRequest.newInstance(applicationId, priority);
     rmClient.updateApplicationPriority(request);
+  }
+
+  @Override
+  public void signalContainer(ContainerId containerId,
+      SignalContainerCommand command)
+          throws YarnException, IOException {
+    LOG.info("Signalling container " + containerId + " with command " + command);
+    SignalContainerRequest request =
+        SignalContainerRequest.newInstance(containerId, command);
+    rmClient.signalContainer(request);
   }
 }

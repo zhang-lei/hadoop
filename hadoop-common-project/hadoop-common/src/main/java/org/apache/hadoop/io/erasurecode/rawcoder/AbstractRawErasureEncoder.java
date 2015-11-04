@@ -18,6 +18,7 @@
 package org.apache.hadoop.io.erasurecode.rawcoder;
 
 import org.apache.hadoop.HadoopIllegalArgumentException;
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.io.erasurecode.ECChunk;
 
 import java.nio.ByteBuffer;
@@ -27,6 +28,7 @@ import java.nio.ByteBuffer;
  *
  * It implements the {@link RawErasureEncoder} interface.
  */
+@InterfaceAudience.Private
 public abstract class AbstractRawErasureEncoder extends AbstractRawErasureCoder
     implements RawErasureEncoder {
 
@@ -43,8 +45,8 @@ public abstract class AbstractRawErasureEncoder extends AbstractRawErasureCoder
     if (dataLen == 0) {
       return;
     }
-    ensureLengthAndType(inputs, false, dataLen, usingDirectBuffer);
-    ensureLengthAndType(outputs, false, dataLen, usingDirectBuffer);
+    checkParameterBuffers(inputs, false, dataLen, usingDirectBuffer, false);
+    checkParameterBuffers(outputs, false, dataLen, usingDirectBuffer, true);
 
     if (usingDirectBuffer) {
       doEncode(inputs, outputs);
@@ -91,8 +93,8 @@ public abstract class AbstractRawErasureEncoder extends AbstractRawErasureCoder
     if (dataLen == 0) {
       return;
     }
-    ensureLength(inputs, false, dataLen);
-    ensureLength(outputs, false, dataLen);
+    checkParameterBuffers(inputs, false, dataLen, false);
+    checkParameterBuffers(outputs, false, dataLen, true);
 
     int[] inputOffsets = new int[inputs.length]; // ALL ZERO
     int[] outputOffsets = new int[outputs.length]; // ALL ZERO

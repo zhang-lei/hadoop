@@ -27,6 +27,7 @@ import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_HTTPS_ADDRESS_DE
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_HTTPS_ADDRESS_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_HTTP_ADDRESS_DEFAULT;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_HTTP_ADDRESS_KEY;
+import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_LIFELINE_RPC_ADDRESS_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_RPC_ADDRESS_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_SECONDARY_HTTP_ADDRESS_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_SERVICE_RPC_ADDRESS_KEY;
@@ -569,6 +570,28 @@ public class DFSUtil {
               + " is not configured.");
     }
     return addressList;
+  }
+
+  /**
+   * Map a logical namenode ID to its lifeline address.  Use the given
+   * nameservice if specified, or the configured one if none is given.
+   *
+   * @param conf Configuration
+   * @param nsId which nameservice nnId is a part of, optional
+   * @param nnId the namenode ID to get the service addr for
+   * @return the lifeline addr, null if it could not be determined
+   */
+  public static String getNamenodeLifelineAddr(final Configuration conf,
+      String nsId, String nnId) {
+
+    if (nsId == null) {
+      nsId = getOnlyNameServiceIdOrNull(conf);
+    }
+
+    String lifelineAddrKey = DFSUtilClient.concatSuffixes(
+        DFSConfigKeys.DFS_NAMENODE_LIFELINE_RPC_ADDRESS_KEY, nsId, nnId);
+
+    return conf.get(lifelineAddrKey);
   }
 
   /**
@@ -1292,6 +1315,9 @@ public class DFSUtil {
       }
     }
     catch (IOException ioe) {
+      LOG.warn("Setting password to null since IOException is caught"
+          + " when getting password", ioe);
+
       password = null;
     }
     return password;
@@ -1351,6 +1377,22 @@ public class DFSUtil {
     sslConf.addResource(conf.get(
         DFSConfigKeys.DFS_SERVER_HTTPS_KEYSTORE_RESOURCE_KEY,
         DFSConfigKeys.DFS_SERVER_HTTPS_KEYSTORE_RESOURCE_DEFAULT));
+
+    final String[] reqSslProps = {
+        DFSConfigKeys.DFS_SERVER_HTTPS_TRUSTSTORE_LOCATION_KEY,
+        DFSConfigKeys.DFS_SERVER_HTTPS_KEYSTORE_LOCATION_KEY,
+        DFSConfigKeys.DFS_SERVER_HTTPS_KEYSTORE_PASSWORD_KEY,
+        DFSConfigKeys.DFS_SERVER_HTTPS_KEYPASSWORD_KEY
+    };
+
+    // Check if the required properties are included
+    for (String sslProp : reqSslProps) {
+      if (sslConf.get(sslProp) == null) {
+        LOG.warn("SSL config " + sslProp + " is missing. If " +
+            DFSConfigKeys.DFS_SERVER_HTTPS_KEYSTORE_RESOURCE_KEY +
+            " is specified, make sure it is a relative path");
+      }
+    }
 
     boolean requireClientAuth = conf.getBoolean(DFS_CLIENT_HTTPS_NEED_AUTH_KEY,
         DFS_CLIENT_HTTPS_NEED_AUTH_DEFAULT);

@@ -1528,7 +1528,9 @@ public class UserGroupInformation {
         (groups.getGroups(getShortUserName()));
       return result.toArray(new String[result.size()]);
     } catch (IOException ie) {
-      LOG.warn("No groups available for user " + getShortUserName());
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("No groups available for user " + getShortUserName());
+      }
       return new String[0];
     }
   }
@@ -1670,7 +1672,10 @@ public class UserGroupInformation {
       if (LOG.isDebugEnabled()) {
         LOG.debug("PrivilegedActionException as:" + this + " cause:" + cause);
       }
-      if (cause instanceof IOException) {
+      if (cause == null) {
+        throw new RuntimeException("PrivilegedActionException with no " +
+                "underlying cause. UGI [" + this + "]", pae);
+      } else if (cause instanceof IOException) {
         throw (IOException) cause;
       } else if (cause instanceof Error) {
         throw (Error) cause;

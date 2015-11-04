@@ -45,8 +45,9 @@
     <!-- Version number for xerces used by JDiff -->
     <xerces.jdiff.version>2.11.0</xerces.jdiff.version>
 
-    <hadoop.assemblies.version>${project.version}</hadoop.assemblies.version>
+    <kafka.version>0.8.2.1</kafka.version>
 
+    <hadoop.assemblies.version>${project.version}</hadoop.assemblies.version>
     <commons-daemon.version>1.0.13</commons-daemon.version>
 
     <test.build.dir>${project.build.directory}/test-dir</test.build.dir>
@@ -66,6 +67,9 @@
     <!-- jackson versions -->
     <jackson.version>1.9.13</jackson.version>
     <jackson2.version>2.2.3</jackson2.version>
+
+    <!-- com.google.re2j version -->
+    <re2j.version>1.0</re2j.version>
 
     <!-- ProtocolBuffer version, used to verify the protoc version and -->
     <!-- define the protobuf JAR version                               -->
@@ -776,6 +780,11 @@
         <version>1.8.5</version>
       </dependency>
       <dependency>
+        <groupId>org.mock-server</groupId>
+        <artifactId>mockserver-netty</artifactId>
+        <version>3.9.2</version>
+      </dependency>
+      <dependency>
         <groupId>org.apache.avro</groupId>
         <artifactId>avro</artifactId>
         <version>${avro.version}</version>
@@ -791,6 +800,11 @@
         <version>1.8.1</version>
       </dependency>
       <dependency>
+        <groupId>com.google.re2j</groupId>
+        <artifactId>re2j</artifactId>
+        <version>${re2j.version}</version>
+      </dependency>
+      <dependency>
         <groupId>com.google.protobuf</groupId>
         <artifactId>protobuf-java</artifactId>
         <version>${protobuf.version}</version>
@@ -803,7 +817,7 @@
       <dependency>
         <groupId>com.jcraft</groupId>
         <artifactId>jsch</artifactId>
-        <version>0.1.42</version>
+        <version>0.1.51</version>
       </dependency>
       <dependency>
         <groupId>org.apache.htrace</groupId>

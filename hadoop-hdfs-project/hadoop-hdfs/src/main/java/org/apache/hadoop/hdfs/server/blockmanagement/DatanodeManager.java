@@ -309,7 +309,7 @@ public class DatanodeManager {
   
   void activate(final Configuration conf) {
     decomManager.activate(conf);
-    heartbeatManager.activate(conf);
+    heartbeatManager.activate();
   }
 
   void close() {
@@ -659,7 +659,7 @@ public class DatanodeManager {
   }
 
   private boolean shouldCountVersion(DatanodeDescriptor node) {
-    return node.getSoftwareVersion() != null && node.isAlive &&
+    return node.getSoftwareVersion() != null && node.isAlive() &&
       !isDatanodeDead(node);
   }
 
@@ -1157,14 +1157,6 @@ public class DatanodeManager {
   }
 
   /**
-   * @return true if this cluster has ever consisted of multiple racks, even if
-   *         it is not now a multi-rack cluster.
-   */
-  boolean hasClusterEverBeenMultiRack() {
-    return hasClusterEverBeenMultiRack;
-  }
-
-  /**
    * Check if the cluster now consists of multiple racks. If it does, and this
    * is the first time it's consisted of multiple racks, then process blocks
    * that may now be misreplicated.
@@ -1343,7 +1335,7 @@ public class DatanodeManager {
           throw new DisallowedDatanodeException(nodeinfo);
         }
 
-        if (nodeinfo == null || !nodeinfo.isAlive) {
+        if (nodeinfo == null || !nodeinfo.isAlive()) {
           return new DatanodeCommand[]{RegisterCommand.REGISTER};
         }
 
@@ -1398,15 +1390,17 @@ public class DatanodeManager {
               // in block recovery.
               recoveryInfos = DatanodeStorageInfo.toDatanodeInfos(storages);
             }
+            RecoveringBlock rBlock;
             if(truncateRecovery) {
               Block recoveryBlock = (copyOnTruncateRecovery) ? b :
                   uc.getTruncateBlock();
-              brCommand.add(new RecoveringBlock(primaryBlock, recoveryInfos,
-                                                recoveryBlock));
+              rBlock = new RecoveringBlock(primaryBlock, recoveryInfos,
+                  recoveryBlock);
             } else {
-              brCommand.add(new RecoveringBlock(primaryBlock, recoveryInfos,
-                                                uc.getBlockRecoveryId()));
+              rBlock = new RecoveringBlock(primaryBlock, recoveryInfos,
+                  uc.getBlockRecoveryId());
             }
+            brCommand.add(rBlock);
           }
           return new DatanodeCommand[] { brCommand };
         }

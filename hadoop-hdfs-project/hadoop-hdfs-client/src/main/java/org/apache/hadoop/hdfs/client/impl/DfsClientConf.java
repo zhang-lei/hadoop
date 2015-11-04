@@ -56,6 +56,8 @@ import static org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.DFS_CLIENT_SOCK
 import static org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.DFS_CLIENT_SOCKET_CACHE_CAPACITY_KEY;
 import static org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.DFS_CLIENT_SOCKET_CACHE_EXPIRY_MSEC_DEFAULT;
 import static org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.DFS_CLIENT_SOCKET_CACHE_EXPIRY_MSEC_KEY;
+import static org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.DFS_CLIENT_SOCKET_SEND_BUFFER_SIZE_DEFAULT;
+import static org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.DFS_CLIENT_SOCKET_SEND_BUFFER_SIZE_KEY;
 import static org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.DFS_CLIENT_SOCKET_TIMEOUT_KEY;
 import static org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.DFS_CLIENT_USE_DN_HOSTNAME;
 import static org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.DFS_CLIENT_USE_DN_HOSTNAME_DEFAULT;
@@ -80,7 +82,6 @@ import static org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.Retry;
 import static org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.ShortCircuit;
 import static org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.Write;
 
-import java.lang.Class;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -106,6 +107,7 @@ public class DfsClientConf {
   private final int writeMaxPackets;
   private final ByteArrayManager.Conf writeByteArrayManagerConf;
   private final int socketTimeout;
+  private final int socketSendBufferSize;
   private final long excludedNodesCacheExpiry;
   /** Wait time window (in msec) if BlockMissingException is caught. */
   private final int timeWindow;
@@ -173,6 +175,8 @@ public class DfsClientConf {
     defaultChecksumOpt = getChecksumOptFromConf(conf);
     socketTimeout = conf.getInt(DFS_CLIENT_SOCKET_TIMEOUT_KEY,
         HdfsConstants.READ_TIMEOUT);
+    socketSendBufferSize = conf.getInt(DFS_CLIENT_SOCKET_SEND_BUFFER_SIZE_KEY,
+        DFS_CLIENT_SOCKET_SEND_BUFFER_SIZE_DEFAULT);
     /** dfs.write.packet.size is an internal config variable */
     writePacketSize = conf.getInt(
         DFS_CLIENT_WRITE_PACKET_SIZE_KEY,
@@ -252,9 +256,8 @@ public class DfsClientConf {
 
   @SuppressWarnings("unchecked")
   private List<Class<? extends ReplicaAccessorBuilder>>
-      loadReplicaAccessorBuilderClasses(Configuration conf)
-  {
-    String classNames[] = conf.getTrimmedStrings(
+      loadReplicaAccessorBuilderClasses(Configuration conf) {
+    String[] classNames = conf.getTrimmedStrings(
         HdfsClientConfigKeys.REPLICA_ACCESSOR_BUILDER_CLASSES_KEY);
     if (classNames.length == 0) {
       return Collections.emptyList();
@@ -265,8 +268,8 @@ public class DfsClientConf {
     for (String className: classNames) {
       try {
         Class<? extends ReplicaAccessorBuilder> cls =
-          (Class<? extends ReplicaAccessorBuilder>)
-            classLoader.loadClass(className);
+            (Class<? extends ReplicaAccessorBuilder>)
+                classLoader.loadClass(className);
         classes.add(cls);
       } catch (Throwable t) {
         LOG.warn("Unable to load " + className, t);
@@ -407,6 +410,13 @@ public class DfsClientConf {
    */
   public int getSocketTimeout() {
     return socketTimeout;
+  }
+
+  /**
+   * @return the socketSendBufferSize
+   */
+  public int getSocketSendBufferSize() {
+    return socketSendBufferSize;
   }
 
   /**

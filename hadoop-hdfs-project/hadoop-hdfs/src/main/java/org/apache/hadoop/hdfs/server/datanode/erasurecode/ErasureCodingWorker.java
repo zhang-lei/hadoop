@@ -45,16 +45,15 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.logging.Log;
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.StorageType;
 import org.apache.hadoop.hdfs.BlockReader;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.DFSPacket;
-import org.apache.hadoop.hdfs.DFSUtil;
 import org.apache.hadoop.hdfs.DFSUtilClient;
 import org.apache.hadoop.hdfs.RemoteBlockReader2;
 import org.apache.hadoop.hdfs.net.Peer;
-import org.apache.hadoop.hdfs.net.TcpPeerServer;
 import org.apache.hadoop.hdfs.protocol.DatanodeID;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
@@ -80,14 +79,13 @@ import org.apache.hadoop.util.DataChecksum;
 
 import com.google.common.base.Preconditions;
 
-import static org.apache.hadoop.hdfs.util.StripedBlockUtil.convertIndex4Decode;
-
 /**
  * ErasureCodingWorker handles the erasure coding recovery work commands. These
  * commands would be issued from Namenode as part of Datanode's heart beat
  * response. BPOfferService delegates the work to this class for handling EC
  * commands.
  */
+@InterfaceAudience.Private
 public final class ErasureCodingWorker {
   private static final Log LOG = DataNode.LOG;
   
@@ -621,8 +619,7 @@ public final class ErasureCodingWorker {
       int m = 0;
       for (int i = 0; i < targets.length; i++) {
         if (targetsStatus[i]) {
-          result[m++] = convertIndex4Decode(targetIndices[i], 
-              dataBlkNum, parityBlkNum);
+          result[m++] = targetIndices[i];
         }
       }
       return Arrays.copyOf(result, m);
@@ -636,15 +633,13 @@ public final class ErasureCodingWorker {
         StripedReader reader = stripedReaders.get(success[i]);
         ByteBuffer buffer = reader.buffer;
         paddingBufferToLen(buffer, toRecoverLen);
-        inputs[convertIndex4Decode(reader.index, dataBlkNum, parityBlkNum)] = 
-            (ByteBuffer)buffer.flip();
+        inputs[reader.index] = (ByteBuffer)buffer.flip();
       }
       if (success.length < dataBlkNum) {
         for (int i = 0; i < zeroStripeBuffers.length; i++) {
           ByteBuffer buffer = zeroStripeBuffers[i];
           paddingBufferToLen(buffer, toRecoverLen);
-          int index = convertIndex4Decode(zeroStripeIndices[i], dataBlkNum,
-              parityBlkNum);
+          int index = zeroStripeIndices[i];
           inputs[index] = (ByteBuffer)buffer.flip();
         }
       }
@@ -818,7 +813,7 @@ public final class ErasureCodingWorker {
             "dummy", block, blockToken, offsetInBlock, 
             block.getNumBytes() - offsetInBlock, true,
             "", newConnectedPeer(block, dnAddr, blockToken, dnInfo), dnInfo,
-            null, cachingStrategy, null);
+            null, cachingStrategy, datanode.getTracer());
       } catch (IOException e) {
         return null;
       }
@@ -912,14 +907,9 @@ public final class ErasureCodingWorker {
 
       for (int i = 0; i < targetBuffers.length; i++) {
         if (targetBuffers[i] != null) {
-          cleanBuffer(targetBuffers[i]);
+          targetBuffers[i].clear();
         }
       }
-    }
-    
-    private ByteBuffer cleanBuffer(ByteBuffer buffer) {
-      Arrays.fill(buffer.array(), (byte) 0);
-      return (ByteBuffer)buffer.clear();
     }
 
     // send an empty packet to mark the end of the block

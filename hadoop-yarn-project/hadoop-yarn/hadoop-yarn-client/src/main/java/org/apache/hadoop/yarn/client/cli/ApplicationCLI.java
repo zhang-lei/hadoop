@@ -38,12 +38,15 @@ import org.apache.hadoop.classification.InterfaceAudience.Private;
 import org.apache.hadoop.classification.InterfaceStability.Unstable;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.hadoop.util.ToolRunner;
+import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptReport;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.ApplicationReport;
 import org.apache.hadoop.yarn.api.records.ApplicationResourceUsageReport;
+import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.ContainerReport;
 import org.apache.hadoop.yarn.api.records.Priority;
+import org.apache.hadoop.yarn.api.records.SignalContainerCommand;
 import org.apache.hadoop.yarn.api.records.YarnApplicationState;
 import org.apache.hadoop.yarn.exceptions.ApplicationAttemptNotFoundException;
 import org.apache.hadoop.yarn.exceptions.ApplicationNotFoundException;
@@ -136,9 +139,11 @@ public class ApplicationCLI extends YarnCLI {
           "Prints the status of the application attempt.");
       opts.addOption(LIST_CMD, true,
           "List application attempts for aplication.");
+      opts.addOption(FAIL_CMD, true, "Fails application attempt.");
       opts.addOption(HELP_CMD, false, "Displays help for all commands.");
       opts.getOption(STATUS_CMD).setArgName("Application Attempt ID");
       opts.getOption(LIST_CMD).setArgName("Application ID");
+      opts.getOption(FAIL_CMD).setArgName("Application Attempt ID");
     } else if (args.length > 0 && args[0].equalsIgnoreCase(CONTAINER)) {
       title = CONTAINER;
       opts.addOption(STATUS_CMD, true,
@@ -148,6 +153,12 @@ public class ApplicationCLI extends YarnCLI {
       opts.addOption(HELP_CMD, false, "Displays help for all commands.");
       opts.getOption(STATUS_CMD).setArgName("Container ID");
       opts.getOption(LIST_CMD).setArgName("Application Attempt ID");
+      opts.addOption(SIGNAL_CMD, true,
+          "Signal the container. The available signal commands are " +
+          java.util.Arrays.asList(SignalContainerCommand.values()) +
+          " Default command is OUTPUT_THREAD_DUMP.");
+      opts.getOption(SIGNAL_CMD).setArgName("container ID [signal command]");
+      opts.getOption(SIGNAL_CMD).setArgs(3);
     }
 
     int exitCode = -1;
@@ -244,6 +255,12 @@ public class ApplicationCLI extends YarnCLI {
       }
       moveApplicationAcrossQueues(cliParser.getOptionValue(MOVE_TO_QUEUE_CMD),
           cliParser.getOptionValue(QUEUE_CMD));
+    } else if (cliParser.hasOption(FAIL_CMD)) {
+      if (!args[0].equalsIgnoreCase(APPLICATION_ATTEMPT)) {
+        printUsage(title, opts);
+        return exitCode;
+      }
+      failApplicationAttempt(cliParser.getOptionValue(FAIL_CMD));
     } else if (cliParser.hasOption(HELP_CMD)) {
       printUsage(title, opts);
       return 0;
@@ -254,11 +271,38 @@ public class ApplicationCLI extends YarnCLI {
       }
       updateApplicationPriority(cliParser.getOptionValue(APP_ID),
           cliParser.getOptionValue(UPDATE_PRIORITY));
+    } else if (cliParser.hasOption(SIGNAL_CMD)) {
+      if (args.length < 3 || args.length > 4) {
+        printUsage(title, opts);
+        return exitCode;
+      }
+      final String[] signalArgs = cliParser.getOptionValues(SIGNAL_CMD);
+      final String containerId = signalArgs[0];
+      SignalContainerCommand command =
+          SignalContainerCommand.OUTPUT_THREAD_DUMP;
+      if (signalArgs.length == 2) {
+        command = SignalContainerCommand.valueOf(signalArgs[1]);
+      }
+      signalContainer(containerId, command);
     } else {
       syserr.println("Invalid Command Usage : ");
       printUsage(title, opts);
     }
     return 0;
+  }
+
+  /**
+   * Signals the containerId
+   *
+   * @param containerIdStr the container id
+   * @param command the signal command
+   * @throws YarnException
+   */
+  private void signalContainer(String containerIdStr,
+      SignalContainerCommand command) throws YarnException, IOException {
+    ContainerId containerId = ConverterUtils.toContainerId(containerIdStr);
+    sysout.println("Signalling container " + containerIdStr);
+    client.signalContainer(containerId, command);
   }
 
   /**
@@ -305,8 +349,9 @@ public class ApplicationCLI extends YarnCLI {
       appAttemptReportStr.println(appAttemptReport
           .getYarnApplicationAttemptState());
       appAttemptReportStr.print("\tAMContainer : ");
-      appAttemptReportStr.println(appAttemptReport.getAMContainerId()
-          .toString());
+      appAttemptReportStr
+          .println(appAttemptReport.getAMContainerId() == null ? "N/A"
+              : appAttemptReport.getAMContainerId().toString());
       appAttemptReportStr.print("\tTracking-URL : ");
       appAttemptReportStr.println(appAttemptReport.getTrackingUrl());
       appAttemptReportStr.print("\tRPC Port : ");
@@ -484,6 +529,25 @@ public class ApplicationCLI extends YarnCLI {
   }
 
   /**
+   * Fails an application attempt.
+   *
+   * @param attemptId ID of the attempt to fail. If provided, applicationId
+   *        parameter is not used.
+   * @throws YarnException
+   * @throws IOException
+   */
+  private void failApplicationAttempt(String attemptId) throws YarnException,
+      IOException {
+    ApplicationId appId;
+    ApplicationAttemptId attId;
+    attId = ConverterUtils.toApplicationAttemptId(attemptId);
+    appId = attId.getApplicationId();
+
+    sysout.println("Failing attempt " + attId + " of application " + appId);
+    client.failApplicationAttempt(attId);
+  }
+
+  /**
    * Prints the application report for an application id.
    * 
    * @param applicationId
@@ -604,6 +668,7 @@ public class ApplicationCLI extends YarnCLI {
       writer.printf(APPLICATION_ATTEMPTS_PATTERN, appAttemptReport
           .getApplicationAttemptId(), appAttemptReport
           .getYarnApplicationAttemptState(), appAttemptReport
+          .getAMContainerId() == null ? "N/A" : appAttemptReport
           .getAMContainerId().toString(), appAttemptReport.getTrackingUrl());
     }
     writer.flush();

@@ -541,6 +541,7 @@ class BPServiceActor implements Runnable {
   
   HeartbeatResponse sendHeartBeat(boolean requestBlockReportLease)
       throws IOException {
+    scheduler.scheduleNextHeartbeat();
     StorageReport[] reports =
         dataset.getStorageReports(bpos.getBlockPoolId());
     if (LOG.isDebugEnabled()) {
@@ -658,7 +659,6 @@ class BPServiceActor implements Runnable {
           //
           boolean requestBlockReportLease = (fullBlockReportLeaseId == 0) &&
                   scheduler.isBlockReportDue(startTime);
-          scheduler.scheduleNextHeartbeat();
           if (!dn.areHeartbeatsDisabledForTests()) {
             resp = sendHeartBeat(requestBlockReportLease);
             assert resp != null;
@@ -1071,7 +1071,7 @@ class BPServiceActor implements Runnable {
 
     long scheduleNextHeartbeat() {
       // Numerical overflow is possible here and is okay.
-      nextHeartbeatTime += heartbeatIntervalMs;
+      nextHeartbeatTime = monotonicNow() + heartbeatIntervalMs;
       return nextHeartbeatTime;
     }
 

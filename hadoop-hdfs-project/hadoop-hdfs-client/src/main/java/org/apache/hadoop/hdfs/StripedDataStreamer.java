@@ -21,6 +21,7 @@ package org.apache.hadoop.hdfs;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.fs.StorageType;
 import org.apache.hadoop.hdfs.DFSStripedOutputStream.Coordinator;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
@@ -28,7 +29,6 @@ import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.server.datanode.CachingStrategy;
 import org.apache.hadoop.hdfs.util.ByteArrayManager;
-import org.apache.hadoop.io.erasurecode.ECSchema;
 import org.apache.hadoop.util.DataChecksum;
 import org.apache.hadoop.util.Progressable;
 
@@ -42,6 +42,7 @@ import com.google.common.annotations.VisibleForTesting;
  * sends an rpc call to the namenode and then populates the result for the
  * other streamers.
  */
+@InterfaceAudience.Private
 public class StripedDataStreamer extends DataStreamer {
   private final Coordinator coordinator;
   private final int index;
@@ -106,7 +107,7 @@ public class StripedDataStreamer extends DataStreamer {
       final DatanodeInfo badNode = nodes[getErrorState().getBadNodeIndex()];
       LOG.info("Excluding datanode " + badNode);
       excludedNodes.put(badNode, badNode);
-      throw new IOException("Unable to create new block.");
+      throw new IOException("Unable to create new block." + this);
     }
     return lb;
   }

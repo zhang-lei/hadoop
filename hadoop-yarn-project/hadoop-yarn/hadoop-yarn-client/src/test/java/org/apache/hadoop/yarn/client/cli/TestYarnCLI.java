@@ -26,12 +26,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -40,6 +42,7 @@ import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import org.apache.commons.cli.Options;
 import org.apache.commons.lang.time.DateFormatUtils;
@@ -61,6 +64,7 @@ import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.QueueInfo;
 import org.apache.hadoop.yarn.api.records.QueueState;
 import org.apache.hadoop.yarn.api.records.Resource;
+import org.apache.hadoop.yarn.api.records.SignalContainerCommand;
 import org.apache.hadoop.yarn.api.records.YarnApplicationAttemptState;
 import org.apache.hadoop.yarn.api.records.YarnApplicationState;
 import org.apache.hadoop.yarn.client.api.YarnClient;
@@ -82,6 +86,8 @@ public class TestYarnCLI {
   private PrintStream sysOut;
   ByteArrayOutputStream sysErrStream;
   private PrintStream sysErr;
+  private static final Pattern SPACES_PATTERN =
+      Pattern.compile("\\s+|\\n+|\\t+");
 
   @Before
   public void setup() {
@@ -99,7 +105,7 @@ public class TestYarnCLI {
       ApplicationId applicationId = ApplicationId.newInstance(1234, 5);
       ApplicationResourceUsageReport usageReport = i == 0 ? null :
           ApplicationResourceUsageReport.newInstance(
-              2, 0, null, null, null, 123456, 4567);
+              2, 0, null, null, null, 123456, 4567, 0, 0);
       ApplicationReport newApplicationReport = ApplicationReport.newInstance(
           applicationId, ApplicationAttemptId.newInstance(applicationId, 1),
           "user", "queue", "appname", "host", 124, null,
@@ -785,7 +791,7 @@ public class TestYarnCLI {
     Assert.assertTrue(result == 0);
     verify(spyCli).printUsage(any(String.class), any(Options.class));
     Assert.assertEquals(createContainerCLIHelpMessage(),
-        sysOutStream.toString());
+        normalize(sysOutStream.toString()));
 
     sysOutStream.reset();
     ApplicationId applicationId = ApplicationId.newInstance(1234, 5);
@@ -795,7 +801,7 @@ public class TestYarnCLI {
         new String[] {"container", "-list", appAttemptId.toString(), "args" });
     verify(spyCli).printUsage(any(String.class), any(Options.class));
     Assert.assertEquals(createContainerCLIHelpMessage(),
-        sysOutStream.toString());
+        normalize(sysOutStream.toString()));
 
     sysOutStream.reset();
     ContainerId containerId = ContainerId.newContainerId(appAttemptId, 7);
@@ -803,7 +809,7 @@ public class TestYarnCLI {
         new String[] { "container", "-status", containerId.toString(), "args" });
     verify(spyCli).printUsage(any(String.class), any(Options.class));
     Assert.assertEquals(createContainerCLIHelpMessage(),
-        sysOutStream.toString());
+        normalize(sysOutStream.toString()));
   }
 
   @Test (timeout = 5000)
@@ -1256,8 +1262,8 @@ public class TestYarnCLI {
     sysOutStream.reset();
     result = cli.run(new String[] { "container", "-status" });
     Assert.assertEquals(result, -1);
-    Assert.assertEquals(String.format("Missing argument for options%n%1s",
-        createContainerCLIHelpMessage()), sysOutStream.toString());
+    Assert.assertEquals(String.format("Missing argument for options %1s",
+        createContainerCLIHelpMessage()), normalize(sysOutStream.toString()));
 
     sysOutStream.reset();
     NodeCLI nodeCLI = new NodeCLI();
@@ -1438,6 +1444,18 @@ public class TestYarnCLI {
 
   }
 
+  @Test
+  public void testFailApplicationAttempt() throws Exception {
+    ApplicationCLI cli = createAndGetAppCLI();
+    int exitCode =
+        cli.run(new String[] { "applicationattempt", "-fail",
+            "appattempt_1444199730803_0003_000001" });
+    Assert.assertEquals(0, exitCode);
+
+    verify(client).failApplicationAttempt(any(ApplicationAttemptId.class));
+    verifyNoMoreInteractions(client);
+  }
+
   private void verifyUsageInfo(YarnCLI cli) throws Exception {
     cli.setSysErrPrintStream(sysErr);
     cli.run(new String[] { "application" });
@@ -1522,6 +1540,7 @@ public class TestYarnCLI {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     PrintWriter pw = new PrintWriter(baos);
     pw.println("usage: applicationattempt");
+    pw.println(" -fail <Application Attempt ID>     Fails application attempt.");
     pw.println(" -help                              Displays help for all commands.");
     pw.println(" -list <Application ID>             List application attempts for");
     pw.println("                                    aplication.");
@@ -1538,10 +1557,17 @@ public class TestYarnCLI {
     pw.println("usage: container");
     pw.println(" -help                            Displays help for all commands.");
     pw.println(" -list <Application Attempt ID>   List containers for application attempt.");
+    pw.println(" -signal <container ID [signal command]> Signal the container.");
+    pw.println("The available signal commands are ");
+    pw.println(java.util.Arrays.asList(SignalContainerCommand.values()));
+    pw.println("                                 Default command is OUTPUT_THREAD_DUMP.");
     pw.println(" -status <Container ID>           Prints the status of the container.");
     pw.close();
-    String appsHelpStr = baos.toString("UTF-8");
-    return appsHelpStr;
+    try {
+      return normalize(baos.toString("UTF-8"));
+    } catch (UnsupportedEncodingException infeasible) {
+      return infeasible.toString();
+    }
   }
 
   private String createNodeCLIHelpMessage() throws IOException {
@@ -1559,5 +1585,32 @@ public class TestYarnCLI {
     pw.close();
     String nodesHelpStr = baos.toString("UTF-8");
     return nodesHelpStr;
+  }
+
+  private static String normalize(String s) {
+    return SPACES_PATTERN.matcher(s).replaceAll(" "); // single space
+  }
+
+  @Test
+  public void testAppAttemptReportWhileContainerIsNotAssigned()
+      throws Exception {
+    ApplicationCLI cli = createAndGetAppCLI();
+    ApplicationId applicationId = ApplicationId.newInstance(1234, 5);
+    ApplicationAttemptId attemptId =
+        ApplicationAttemptId.newInstance(applicationId, 1);
+    ApplicationAttemptReport attemptReport =
+        ApplicationAttemptReport.newInstance(attemptId, "host", 124, "url",
+            "oUrl", "diagnostics", YarnApplicationAttemptState.SCHEDULED, null,
+            1000l, 2000l);
+    when(client.getApplicationAttemptReport(any(ApplicationAttemptId.class)))
+        .thenReturn(attemptReport);
+    int result =
+        cli.run(new String[] { "applicationattempt", "-status",
+            attemptId.toString() });
+    assertEquals(0, result);
+    result =
+        cli.run(new String[] { "applicationattempt", "-list",
+            applicationId.toString() });
+    assertEquals(0, result);
   }
 }

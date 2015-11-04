@@ -34,7 +34,7 @@ public class ServerSocketUtil {
    * Port scan & allocate is how most other apps find ports
    * 
    * @param port given port
-   * @param retries number of retires
+   * @param retries number of retries
    * @return
    * @throws IOException
    */
@@ -48,8 +48,8 @@ public class ServerSocketUtil {
       if (tryPort == 0) {
         continue;
       }
-      LOG.info("Using port " + tryPort);
       try (ServerSocket s = new ServerSocket(tryPort)) {
+        LOG.info("Using port " + tryPort);
         return tryPort;
       } catch (IOException e) {
         tries++;

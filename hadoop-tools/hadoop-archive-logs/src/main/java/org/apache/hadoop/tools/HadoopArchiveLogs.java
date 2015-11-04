@@ -76,6 +76,7 @@ public class HadoopArchiveLogs implements Tool {
   private static final String MAX_TOTAL_LOGS_SIZE_OPTION = "maxTotalLogsSize";
   private static final String MEMORY_OPTION = "memory";
   private static final String VERBOSE_OPTION = "verbose";
+  private static final String FORCE_OPTION = "force";
 
   private static final int DEFAULT_MAX_ELIGIBLE = -1;
   private static final int DEFAULT_MIN_NUM_LOG_FILES = 20;
@@ -91,6 +92,8 @@ public class HadoopArchiveLogs implements Tool {
   @VisibleForTesting
   long memory = DEFAULT_MEMORY;
   private boolean verbose = false;
+  @VisibleForTesting
+  boolean force = false;
 
   @VisibleForTesting
   Set<AppInfo> eligibleApplications;
@@ -126,6 +129,8 @@ public class HadoopArchiveLogs implements Tool {
 
   @Override
   public int run(String[] args) throws Exception {
+    int exitCode = 1;
+
     handleOpts(args);
 
     FileSystem fs = null;
@@ -141,44 +146,41 @@ public class HadoopArchiveLogs implements Tool {
     }
     try {
       fs = FileSystem.get(conf);
-      checkFilesAndSeedApps(fs, remoteRootLogDir, suffix);
+      if (prepareWorkingDir(fs, workingDir)) {
 
-      // Prepare working directory
-      if (fs.exists(workingDir)) {
-        fs.delete(workingDir, true);
+        checkFilesAndSeedApps(fs, remoteRootLogDir, suffix);
+
+        filterAppsByAggregatedStatus();
+
+        checkMaxEligible();
+
+        if (eligibleApplications.isEmpty()) {
+          LOG.info("No eligible applications to process");
+          exitCode = 0;
+        } else {
+          StringBuilder sb =
+              new StringBuilder("Will process the following applications:");
+          for (AppInfo app : eligibleApplications) {
+            sb.append("\n\t").append(app.getAppId());
+          }
+          LOG.info(sb.toString());
+
+          File localScript = File.createTempFile("hadoop-archive-logs-", ".sh");
+          generateScript(localScript, workingDir, remoteRootLogDir, suffix);
+
+          exitCode = runDistributedShell(localScript) ? 0 : 1;
+        }
       }
-      fs.mkdirs(workingDir);
-      fs.setPermission(workingDir,
-          new FsPermission(FsAction.ALL, FsAction.NONE, FsAction.NONE));
     } finally {
       if (fs != null) {
+        // Cleanup working directory
+        if (fs.exists(workingDir)) {
+          fs.delete(workingDir, true);
+        }
         fs.close();
       }
     }
-
-    filterAppsByAggregatedStatus();
-
-    checkMaxEligible();
-
-    if (eligibleApplications.isEmpty()) {
-      LOG.info("No eligible applications to process");
-      System.exit(0);
-    }
-
-    StringBuilder sb =
-        new StringBuilder("Will process the following applications:");
-    for (AppInfo app : eligibleApplications) {
-      sb.append("\n\t").append(app.getAppId());
-    }
-    LOG.info(sb.toString());
-
-    File localScript = File.createTempFile("hadoop-archive-logs-", ".sh");
-    generateScript(localScript, workingDir, remoteRootLogDir, suffix);
-
-    if (runDistributedShell(localScript)) {
-      return 0;
-    }
-    return -1;
+    return exitCode;
   }
 
   private void handleOpts(String[] args) throws ParseException {
@@ -202,19 +204,24 @@ public class HadoopArchiveLogs implements Tool {
     memoryOpt.setArgName("megabytes");
     Option verboseOpt = new Option(VERBOSE_OPTION, false,
         "Print more details.");
+    Option forceOpt = new Option(FORCE_OPTION, false,
+        "Force recreating the working directory if an existing one is found. " +
+            "This should only be used if you know that another instance is " +
+            "not currently running");
     opts.addOption(helpOpt);
     opts.addOption(maxEligibleOpt);
     opts.addOption(minNumLogFilesOpt);
     opts.addOption(maxTotalLogsSizeOpt);
     opts.addOption(memoryOpt);
     opts.addOption(verboseOpt);
+    opts.addOption(forceOpt);
 
     try {
       CommandLineParser parser = new GnuParser();
       CommandLine commandLine = parser.parse(opts, args);
       if (commandLine.hasOption(HELP_OPTION)) {
         HelpFormatter formatter = new HelpFormatter();
-        formatter.printHelp("yarn archive-logs", opts);
+        formatter.printHelp("mapred archive-logs", opts);
         System.exit(0);
       }
       if (commandLine.hasOption(MAX_ELIGIBLE_APPS_OPTION)) {
@@ -242,11 +249,33 @@ public class HadoopArchiveLogs implements Tool {
       if (commandLine.hasOption(VERBOSE_OPTION)) {
         verbose = true;
       }
+      if (commandLine.hasOption(FORCE_OPTION)) {
+        force = true;
+      }
     } catch (ParseException pe) {
       HelpFormatter formatter = new HelpFormatter();
-      formatter.printHelp("yarn archive-logs", opts);
+      formatter.printHelp("mapred archive-logs", opts);
       throw pe;
     }
+  }
+
+  @VisibleForTesting
+  boolean prepareWorkingDir(FileSystem fs, Path workingDir) throws IOException {
+    if (fs.exists(workingDir)) {
+      if (force) {
+        LOG.info("Existing Working Dir detected: -" + FORCE_OPTION +
+            " specified -> recreating Working Dir");
+        fs.delete(workingDir, true);
+      } else {
+        LOG.info("Existing Working Dir detected: -" + FORCE_OPTION +
+            " not specified -> exiting");
+        return false;
+      }
+    }
+    fs.mkdirs(workingDir);
+    fs.setPermission(workingDir,
+        new FsPermission(FsAction.ALL, FsAction.ALL, FsAction.NONE));
+    return true;
   }
 
   @VisibleForTesting
@@ -408,7 +437,7 @@ public class HadoopArchiveLogs implements Tool {
   fi
   export HADOOP_CLIENT_OPTS="-Xmx1024m"
   export HADOOP_CLASSPATH=/dist/share/hadoop/tools/lib/hadoop-archive-logs-2.8.0-SNAPSHOT.jar:/dist/share/hadoop/tools/lib/hadoop-archives-2.8.0-SNAPSHOT.jar
-  "$HADOOP_HOME"/bin/hadoop org.apache.hadoop.tools.HadoopArchiveLogsRunner -appId "$appId" -user "$user" -workingDir /tmp/logs/archive-logs-work -remoteRootLogDir /tmp/logs -suffix logs
+  "$HADOOP_PREFIX"/bin/hadoop org.apache.hadoop.tools.HadoopArchiveLogsRunner -appId "$appId" -user "$user" -workingDir /tmp/logs/archive-logs-work -remoteRootLogDir /tmp/logs -suffix logs
    */
   @VisibleForTesting
   void generateScript(File localScript, Path workingDir,
@@ -442,7 +471,7 @@ public class HadoopArchiveLogs implements Tool {
       fw.write("m\"\n");
       fw.write("export HADOOP_CLASSPATH=");
       fw.write(classpath);
-      fw.write("\n\"$HADOOP_HOME\"/bin/hadoop ");
+      fw.write("\n\"$HADOOP_PREFIX\"/bin/hadoop ");
       fw.write(HadoopArchiveLogsRunner.class.getName());
       fw.write(" -appId \"$appId\" -user \"$user\" -workingDir ");
       fw.write(workingDir.toString());

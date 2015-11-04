@@ -28,10 +28,7 @@ import org.apache.hadoop.ha.HAServiceProtocol.HAServiceState;
 import org.apache.hadoop.http.lib.StaticUserWebFilter;
 import org.apache.hadoop.metrics2.lib.DefaultMetricsSystem;
 import org.apache.hadoop.metrics2.source.JvmMetrics;
-import org.apache.hadoop.security.AuthenticationFilterInitializer;
-import org.apache.hadoop.security.Groups;
-import org.apache.hadoop.security.SecurityUtil;
-import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.hadoop.security.*;
 import org.apache.hadoop.security.authentication.server.KerberosAuthenticationHandler;
 import org.apache.hadoop.security.authorize.ProxyUsers;
 import org.apache.hadoop.service.AbstractService;
@@ -62,6 +59,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.metrics.SystemMetricsPublis
 import org.apache.hadoop.yarn.server.resourcemanager.monitor.SchedulingEditPolicy;
 import org.apache.hadoop.yarn.server.resourcemanager.monitor.SchedulingMonitor;
 import org.apache.hadoop.yarn.server.resourcemanager.nodelabels.RMNodeLabelsManager;
+import org.apache.hadoop.yarn.server.resourcemanager.nodelabels.RMDelegatedNodeLabelsUpdater;
 import org.apache.hadoop.yarn.server.resourcemanager.recovery.NullRMStateStore;
 import org.apache.hadoop.yarn.server.resourcemanager.recovery.RMStateStore;
 import org.apache.hadoop.yarn.server.resourcemanager.recovery.RMStateStore.RMState;
@@ -439,6 +437,13 @@ public class ResourceManager extends CompositeService implements Recoverable {
       nlm.setRMContext(rmContext);
       addService(nlm);
       rmContext.setNodeLabelManager(nlm);
+
+      RMDelegatedNodeLabelsUpdater delegatedNodeLabelsUpdater =
+          createRMDelegatedNodeLabelsUpdater();
+      if (delegatedNodeLabelsUpdater != null) {
+        addService(delegatedNodeLabelsUpdater);
+        rmContext.setRMDelegatedNodeLabelsUpdater(delegatedNodeLabelsUpdater);
+      }
 
       boolean isRecoveryEnabled = conf.getBoolean(
           YarnConfiguration.RECOVERY_ENABLED,
@@ -858,6 +863,9 @@ public class ResourceManager extends CompositeService implements Recoverable {
     // 4. hadoop.http.filter.initializers container AuthenticationFilterInitializer
 
     Configuration conf = getConfig();
+    boolean enableCorsFilter =
+        conf.getBoolean(YarnConfiguration.RM_WEBAPP_ENABLE_CORS_FILTER,
+            YarnConfiguration.DEFAULT_RM_WEBAPP_ENABLE_CORS_FILTER);
     boolean useYarnAuthenticationFilter =
         conf.getBoolean(
           YarnConfiguration.RM_WEBAPP_DELEGATION_TOKEN_AUTH_FILTER,
@@ -868,6 +876,12 @@ public class ResourceManager extends CompositeService implements Recoverable {
     String actualInitializers = "";
     Class<?>[] initializersClasses =
         conf.getClasses(filterInitializerConfKey);
+
+    // setup CORS
+    if (enableCorsFilter) {
+      conf.setBoolean(HttpCrossOriginFilterInitializer.PREFIX
+          + HttpCrossOriginFilterInitializer.ENABLED_SUFFIX, true);
+    }
 
     boolean hasHadoopAuthFilterInitializer = false;
     boolean hasRMAuthFilterInitializer = false;
@@ -1113,6 +1127,20 @@ public class ResourceManager extends CompositeService implements Recoverable {
     return new RMSecretManagerService(conf, rmContext);
   }
 
+  /**
+   * Create RMDelegatedNodeLabelsUpdater based on configuration.
+   */
+  protected RMDelegatedNodeLabelsUpdater createRMDelegatedNodeLabelsUpdater() {
+    if (conf.getBoolean(YarnConfiguration.NODE_LABELS_ENABLED,
+            YarnConfiguration.DEFAULT_NODE_LABELS_ENABLED)
+        && YarnConfiguration.isDelegatedCentralizedNodeLabelConfiguration(
+            conf)) {
+      return new RMDelegatedNodeLabelsUpdater(rmContext);
+    } else {
+      return null;
+    }
+  }
+
   @Private
   public ClientRMService getClientRMService() {
     return this.clientRM;
@@ -1164,6 +1192,10 @@ public class ResourceManager extends CompositeService implements Recoverable {
     // recover AMRMTokenSecretManager
     rmContext.getAMRMTokenSecretManager().recover(state);
 
+    // recover reservations
+    if (reservationSystem != null) {
+      reservationSystem.recover(state);
+    }
     // recover applications
     rmAppManager.recover(state);
 

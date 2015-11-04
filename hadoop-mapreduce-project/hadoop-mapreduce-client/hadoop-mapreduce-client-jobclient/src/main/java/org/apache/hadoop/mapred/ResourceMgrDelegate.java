@@ -63,6 +63,7 @@ import org.apache.hadoop.yarn.api.records.NodeReport;
 import org.apache.hadoop.yarn.api.records.NodeState;
 import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.QueueUserACLInfo;
+import org.apache.hadoop.yarn.api.records.SignalContainerCommand;
 import org.apache.hadoop.yarn.api.records.YarnApplicationState;
 import org.apache.hadoop.yarn.api.records.YarnClusterMetrics;
 import org.apache.hadoop.yarn.client.ClientRMProxy;
@@ -293,6 +294,12 @@ public class ResourceMgrDelegate extends YarnClient {
   }
 
   @Override
+  public void failApplicationAttempt(ApplicationAttemptId attemptId)
+      throws YarnException, IOException {
+    client.failApplicationAttempt(attemptId);
+  }
+
+  @Override
   public void killApplication(ApplicationId applicationId)
       throws YarnException, IOException {
     client.killApplication(applicationId);
@@ -472,5 +479,11 @@ public class ResourceMgrDelegate extends YarnClient {
   public void updateApplicationPriority(ApplicationId applicationId,
       Priority priority) throws YarnException, IOException {
     client.updateApplicationPriority(applicationId, priority);
+  }
+
+  @Override
+  public void signalContainer(ContainerId containerId, SignalContainerCommand command)
+      throws YarnException, IOException {
+    client.signalContainer(containerId, command);
   }
 }

@@ -19,6 +19,8 @@ package org.apache.hadoop.io.erasurecode.rawcoder;
 
 import java.nio.ByteBuffer;
 
+import org.apache.hadoop.classification.InterfaceAudience;
+
 /**
  * A raw encoder in XOR code scheme in pure Java, adapted from HDFS-RAID.
  *
@@ -26,6 +28,7 @@ import java.nio.ByteBuffer;
  * used in advanced codes, like HitchHiker and LRC, though itself is rarely
  * deployed independently.
  */
+@InterfaceAudience.Private
 public class XORRawEncoder extends AbstractRawErasureEncoder {
 
   public XORRawEncoder(int numDataUnits, int numParityUnits) {
@@ -34,7 +37,6 @@ public class XORRawEncoder extends AbstractRawErasureEncoder {
 
   protected void doEncode(ByteBuffer[] inputs, ByteBuffer[] outputs) {
     ByteBuffer output = outputs[0];
-    resetBuffer(output);
 
     // Get the first buffer's data.
     int iIdx, oIdx;

@@ -101,7 +101,7 @@ public class CommonNodeLabelsManager extends AbstractService {
   protected NodeLabelsStore store;
   private boolean nodeLabelsEnabled = false;
 
-  private boolean isDistributedNodeLabelConfiguration = false;
+  private boolean isCentralizedNodeLabelConfiguration = true;
 
   /**
    * A <code>Host</code> can have multiple <code>Node</code>s 
@@ -216,20 +216,18 @@ public class CommonNodeLabelsManager extends AbstractService {
   @Override
   protected void serviceInit(Configuration conf) throws Exception {
     // set if node labels enabled
-    nodeLabelsEnabled =
-        conf.getBoolean(YarnConfiguration.NODE_LABELS_ENABLED,
-            YarnConfiguration.DEFAULT_NODE_LABELS_ENABLED);
+    nodeLabelsEnabled = YarnConfiguration.areNodeLabelsEnabled(conf);
 
-    isDistributedNodeLabelConfiguration  =
-        YarnConfiguration.isDistributedNodeLabelConfiguration(conf);
-    
+    isCentralizedNodeLabelConfiguration  =
+        YarnConfiguration.isCentralizedNodeLabelConfiguration(conf);
+
     labelCollections.put(NO_LABEL, new RMNodeLabel(NO_LABEL));
   }
 
   protected void initNodeLabelStore(Configuration conf) throws Exception {
     this.store = new FileSystemNodeLabelsStore(this);
     this.store.init(conf);
-    this.store.recover(isDistributedNodeLabelConfiguration);
+    this.store.recover(!isCentralizedNodeLabelConfiguration);
   }
 
   // for UT purpose
@@ -624,10 +622,14 @@ public class CommonNodeLabelsManager extends AbstractService {
       }
     }
     
-    if (null != dispatcher && !isDistributedNodeLabelConfiguration) {
-      // In case of DistributedNodeLabelConfiguration, no need to save the the
+    if (null != dispatcher && isCentralizedNodeLabelConfiguration) {
+      // In case of DistributedNodeLabelConfiguration or
+      // DelegatedCentralizedNodeLabelConfiguration, no need to save the the
       // NodeLabels Mapping to the back-end store, as on RM restart/failover
       // NodeLabels are collected from NM through Register/Heartbeat again
+      // in case of DistributedNodeLabelConfiguration and collected from
+      // RMNodeLabelsMappingProvider in case of
+      // DelegatedCentralizedNodeLabelConfiguration
       dispatcher.getEventHandler().handle(
           new UpdateNodeToLabelsMappingsEvent(newNMToLabels));
     }

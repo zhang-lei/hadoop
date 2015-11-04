@@ -44,6 +44,9 @@ public enum RMNodeEventType {
   CLEANUP_CONTAINER,
   DECREASE_CONTAINER,
 
+  // Source: ClientRMService
+  SIGNAL_CONTAINER,
+
   // Source: RMAppAttempt
   FINISHED_CONTAINERS_PULLED_BY_AM,
 

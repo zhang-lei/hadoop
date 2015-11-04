@@ -38,8 +38,6 @@ import org.apache.hadoop.yarn.api.protocolrecords.ReservationSubmissionRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.ReservationSubmissionResponse;
 import org.apache.hadoop.yarn.api.protocolrecords.ReservationUpdateRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.ReservationUpdateResponse;
-import org.apache.hadoop.yarn.api.protocolrecords.UpdateApplicationPriorityRequest;
-import org.apache.hadoop.yarn.api.protocolrecords.UpdateApplicationPriorityResponse;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptReport;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
@@ -56,6 +54,7 @@ import org.apache.hadoop.yarn.api.records.QueueInfo;
 import org.apache.hadoop.yarn.api.records.QueueUserACLInfo;
 import org.apache.hadoop.yarn.api.records.ReservationDefinition;
 import org.apache.hadoop.yarn.api.records.ReservationId;
+import org.apache.hadoop.yarn.api.records.SignalContainerCommand;
 import org.apache.hadoop.yarn.api.records.Token;
 import org.apache.hadoop.yarn.api.records.YarnApplicationState;
 import org.apache.hadoop.yarn.api.records.YarnClusterMetrics;
@@ -135,6 +134,23 @@ public abstract class YarnClient extends AbstractService {
    */
   public abstract ApplicationId submitApplication(
       ApplicationSubmissionContext appContext) throws YarnException,
+      IOException;
+
+  /**
+   * <p>
+   * Fail an application attempt identified by given ID.
+   * </p>
+   *
+   * @param applicationAttemptId
+   *          {@link ApplicationAttemptId} of the attempt to fail.
+   * @throws YarnException
+   *           in case of errors or if YARN rejects the request due to
+   *           access-control restrictions.
+   * @throws IOException
+   * @see #getQueueAclsInfo()
+   */
+  public abstract void failApplicationAttempt(
+      ApplicationAttemptId applicationAttemptId) throws YarnException,
       IOException;
 
   /**
@@ -683,4 +699,18 @@ public abstract class YarnClient extends AbstractService {
   @Unstable
   public abstract void updateApplicationPriority(ApplicationId applicationId,
       Priority priority) throws YarnException, IOException;
+
+  /**
+   * <p>
+   * Signal a container identified by given ID.
+   * </p>
+   *
+   * @param containerId
+   *          {@link ContainerId} of the container that needs to be signaled
+   * @param command the signal container command
+   * @throws YarnException
+   * @throws IOException
+   */
+  public abstract void signalContainer(ContainerId containerId,
+      SignalContainerCommand command) throws YarnException, IOException;
 }

@@ -39,6 +39,11 @@ Trunk (Unreleased)
     HDFS-8981. Adding revision to data node jmx getVersion() method. (Siqi Li
     via mingma)
 
+    HDFS-9085. Show renewer information in DelegationTokenIdentifier#toString.
+    (Zhihai Xu via cnauroth)
+
+    HDFS-9278. Fix preferredBlockSize typo in OIV XML output. (Nicole Pazmany via wang)
+
   NEW FEATURES
 
     HDFS-3125. Add JournalService to enable Journal Daemon. (suresh)
@@ -169,6 +174,23 @@ Trunk (Unreleased)
 
     HDFS-5033. Bad error message for fs -put/copyFromLocal if user
     doesn't have permissions to read the source (Darrell Taylor via aw)
+
+    HDFS-9182. Cleanup the findbugs and other issues after HDFS EC merged to trunk.
+    (umamahesh)
+
+    HDFS-8632. Add InterfaceAudience annotation to the erasure coding classes.
+    (Rakesh R via wang)
+
+    HDFS-9070. Allow fsck display pending replica location information for
+    being-written blocks. (GAO Rui via jing9)
+
+    HDFS-9261. Erasure Coding: Skip encoding the data cells if all the parity data 
+    streamers are failed for the current block group. (Rakesh R via umamahesh)
+
+    HDFS-9323. Randomize the DFSStripedOutputStreamWithFailure tests. (szetszwo)
+
+    HDFS-8777. Erasure Coding: add tests for taking snapshots on EC files. 
+    (Rakesh R via zhz)
 
   OPTIMIZATIONS
 
@@ -339,7 +361,8 @@ Trunk (Unreleased)
     HDFS-7673. synthetic load generator docs give incorrect/incomplete commands
     (Brahma Reddy Battula via aw)
 
-    HDFS-8332. DFS client API calls should check filesystem closed (Rakesh R via umamahesh)
+    HDFS-8332. DFS client API calls should check filesystem closed
+    (Rakesh R via umamahesh)
 
     HDFS-8412. Fix the test failures in HTTPFS. (umamahesh)
 
@@ -349,6 +372,485 @@ Trunk (Unreleased)
     HDFS-8657. Update docs for mSNN. (Jesse Yates via atm)
 
     HDFS-8800. hdfs --daemon stop namenode corrupts logs (John Smith via aw)
+
+    HDFS-9204. DatanodeDescriptor#PendingReplicationWithoutTargets is wrongly
+    calculated. (Mingliang Liu via jing9)
+
+    HDFS-9217. Fix broken findbugsExcludeFile.xml for hadoop-hdfs-client module.
+    (Mingliang Liu via aajisaka)
+
+    BREAKDOWN OF HDFS-7285 SUBTASKS AND RELATED JIRAS
+
+      HDFS-7347. Configurable erasure coding policy for individual files and
+      directories ( Zhe Zhang via vinayakumarb )
+
+      HDFS-7339. Representing striped block groups in NameNode with hierarchical
+      naming protocol ( zhz )
+
+      HDFS-7652. Process block reports for erasure coded blocks (Zhe Zhang)
+
+      HDFS-7716. Erasure Coding: extend BlockInfo to handle EC info (Jing Zhao)
+
+      HDFS-7749. Erasure Coding: Add striped block support in INodeFile (Jing Zhao)
+
+      HDFS-7837. Erasure Coding: allocate and persist striped blocks in NameNode
+      (Jing Zhao via Zhe Zhang)
+
+      HDFS-7872. Erasure Coding: INodeFile.dumpTreeRecursively() supports to print
+      striped blocks (Takuya Fukudome via jing9)
+
+      HDFS-7853. Erasure coding: extend LocatedBlocks to support reading from
+      striped files (Jing Zhao)
+
+      HDFS-7826. Erasure Coding: Update INodeFile quota computation for striped
+      blocks ( Kai Sasaki via jing9 )
+
+      HDFS-7912. Erasure Coding: track BlockInfo instead of Block in
+      UnderReplicatedBlocks and PendingReplicationBlocks (Jing Zhao)
+
+      HDFS-7369. Erasure coding: distribute recovery work for striped blocks to
+      DataNode (Zhe Zhang)
+
+      HDFS-7864. Erasure Coding: Update safemode calculation for striped blocks
+      (GAO Rui via jing9)
+
+      HDFS-7827. Erasure Coding: support striped blocks in non-protobuf fsimage
+      ( Hui Zheng via jing9 )
+
+      HDFS-7616. Add a test for BlockGroup support in FSImage.
+      (Takuya Fukudome via szetszwo)
+
+      HDFS-7907. Erasure Coding: track invalid, corrupt, and under-recovery striped
+      blocks in NameNode (Jing Zhao)
+
+      HDFS-8005. Erasure Coding: simplify striped block recovery work computation
+      and add tests (Jing Zhao)
+
+      HDFS-7617. Add unit tests for editlog transactions for EC
+      (Hui Zheng via Zhe Zhang)
+
+      HDFS-7839. Erasure coding: implement facilities in NameNode to create and
+      manage EC zones (Zhe Zhang)
+
+      HDFS-7969. Erasure coding: NameNode support for lease recovery of striped
+      block groups. (Zhe Zhang)
+
+      HDFS-7782. Erasure coding: pread from files in striped layout.
+      (Zhe Zhang and Jing Zhao via Zhe Zhang)
+
+      HDFS-8023. Erasure Coding: retrieve eraure coding schema for a file from
+      NameNode (vinayakumarb)
+
+      HDFS-8074. Define a system-wide default EC schema. (Kai Zheng)
+
+      HDFS-8077. Erasure coding: fix bugs in EC zone and symlinks.
+      (Jing Zhao and Zhe Zhang via Jing Zhao)
+
+      HDFS-8104. Make hard-coded values consistent with the system default schema first before remove them. (Kai Zheng)
+
+      HDFS-7889. Subclass DFSOutputStream to support writing striping layout files. (Li Bo via Kai Zheng)
+
+      HDFS-8090. Erasure Coding: Add RPC to client-namenode to list all
+      ECSchemas loaded in Namenode. (vinayakumarb)
+
+      HDFS-8122. Erasure Coding: Support specifying ECSchema during creation of ECZone.
+      (Vinayakumar B via Zhe Zhang)
+
+      HDFS-8114. Erasure coding: Add auditlog FSNamesystem#createErasureCodingZone if this
+      operation fails. (Rakesh R via Zhe Zhang)
+
+      HDFS-8123. Erasure Coding: Better to move EC related proto messages to a
+      separate erasurecoding proto file (Rakesh R via vinayakumarb)
+
+      HDFS-7349. Support DFS command for the EC encoding (vinayakumarb)
+
+      HDFS-8120. Erasure coding: created util class to analyze striped block groups.
+      (Contributed by Zhe Zhang and Li Bo via Jing Zhao)
+
+      HDFS-7994. Detect if resevered EC Block ID is already used during namenode
+      startup. (Hui Zheng via szetszwo)
+
+      HDFS-8167. BlockManager.addBlockCollectionWithCheck should check if the block is a striped block. (Hui Zheng via zhz).
+
+      HDFS-8166. DFSStripedOutputStream should not create empty blocks. (Jing Zhao)
+
+      HDFS-7937. Erasure Coding: INodeFile quota computation unit tests.
+      (Kai Sasaki via Jing Zhao)
+
+      HDFS-8145. Fix the editlog corruption exposed by failed TestAddStripedBlocks.
+      (Jing Zhao)
+
+      HDFS-8146. Protobuf changes for BlockECRecoveryCommand and its fields for
+      making it ready for transfer to DN (Uma Maheswara Rao G via vinayakumarb)
+
+      HDFS-8181. createErasureCodingZone sets retryCache state as false always
+      (Uma Maheswara Rao G via vinayakumarb)
+
+      HDFS-8190. StripedBlockUtil.getInternalBlockLength may have overflow error.
+      (szetszwo)
+
+      HDFS-8216. TestDFSStripedOutputStream should use BlockReaderTestUtil to
+      create BlockReader. (szetszwo via Zhe Zhang)
+
+      HDFS-8212. DistributedFileSystem.createErasureCodingZone should pass schema
+      in FileSystemLinkResolver. (szetszwo via Zhe Zhang)
+
+      HDFS-8024. Erasure Coding: ECworker frame, basics, bootstraping and configuration.
+      (umamahesh)
+
+      HDFS-8156. Add/implement necessary APIs even we just have the system default
+      schema. (Kai Zheng via Zhe Zhang)
+
+      HDFS-8136. Client gets and uses EC schema when reads and writes a stripping
+      file. (Kai Sasaki via Kai Zheng)
+
+      HDFS-8233. Fix DFSStripedOutputStream#getCurrentBlockGroupBytes when the last
+      stripe is at the block group boundary. (jing9)
+
+      HDFS-8223. Should calculate checksum for parity blocks in DFSStripedOutputStream.
+      (Yi Liu via jing9)
+
+      HDFS-8228. Erasure Coding: SequentialBlockGroupIdGenerator#nextValue may cause
+      block id conflicts (Jing Zhao via Zhe Zhang)
+
+      HDFS-8033. Erasure coding: stateful (non-positional) read from files in
+      striped layout (Zhe Zhang)
+
+      HDFS-8230. Erasure Coding: Ignore DatanodeProtocol#DNA_ERASURE_CODING_RECOVERY
+      commands from standbynode if any (vinayakumarb)
+
+      HDFS-8189. ClientProtocol#createErasureCodingZone API was wrongly annotated
+      as Idempotent (vinayakumarb)
+
+      HDFS-8235. Erasure Coding: Create DFSStripedInputStream in DFSClient#open.
+      (Kai Sasaki via jing9)
+
+      HDFS-8272. Erasure Coding: simplify the retry logic in DFSStripedInputStream
+      (stateful read). (Jing Zhao via Zhe Zhang)
+
+      HDFS-8282. Erasure coding: move striped reading logic to StripedBlockUtil.
+      (Zhe Zhang)
+
+      HDFS-8183. Erasure Coding: Improve DFSStripedOutputStream closing of
+      datastreamer threads. (Rakesh R via Zhe Zhang)
+
+      HDFS-8308. Erasure Coding: NameNode may get blocked in waitForLoadingFSImage()
+      when loading editlog. (jing9)
+
+      HDFS-7949. WebImageViewer need support file size calculation with striped
+      blocks. (Rakesh R via Zhe Zhang)
+
+      HDFS-8316. Erasure coding: refactor EC constants to be consistent with HDFS-8249.
+      (Zhe Zhang via jing9)
+
+      HDFS-8281. Erasure Coding: implement parallel stateful reading for striped layout.
+      (jing9)
+
+      HDFS-8137. Send the EC schema to DataNode via EC encoding/recovering command(umamahesh)
+
+      HDFS-8242. Erasure Coding: XML based end-to-end test for ECCli commands
+      (Rakesh R via vinayakumarb)
+
+      HDFS-8324. Add trace info to DFSClient#getErasureCodingZoneInfo(..) (vinayakumarb via
+      umamahesh)
+
+      HDFS-7672. Handle write failure for stripping blocks and refactor the
+      existing code in DFSStripedOutputStream and StripedDataStreamer.  (szetszwo)
+
+      HDFS-7348. Erasure Coding: DataNode reconstruct striped blocks.
+      (Yi Liu via Zhe Zhang)
+
+      HDFS-8334. Erasure coding: rename DFSStripedInputStream related test
+      classes. (Zhe Zhang)
+
+      HDFS-8129. Erasure Coding: Maintain consistent naming for Erasure Coding related classes - EC/ErasureCoding
+      (umamahesh)
+
+      HDFS-8203. Erasure Coding: Seek and other Ops in DFSStripedInputStream.
+      (Yi Liu via jing9)
+
+      HDFS-8289. Erasure Coding: add ECSchema to HdfsFileStatus. (Yong Zhang via
+      jing9)
+
+      HDFS-8355. Erasure Coding: Refactor BlockInfo and BlockInfoUnderConstruction.
+      (Tsz Wo Nicholas Sze via jing9)
+
+      HDFS-7678. Erasure coding: DFSInputStream with decode functionality (pread).
+      (Zhe Zhang)
+
+      HDFS-8372. Erasure coding: compute storage type quotas for striped files,
+      to be consistent with HDFS-8327. (Zhe Zhang via jing9)
+
+      HDFS-8368. Erasure Coding: DFS opening a non-existent file need to be
+      handled properly (Rakesh R via zhz)
+
+      HDFS-8363. Erasure Coding: DFSStripedInputStream#seekToNewSource. (yliu)
+
+      HDFS-8195. Erasure coding: Fix file quota change when we complete/commit
+      the striped blocks. (Takuya Fukudome via zhz)
+
+      HDFS-8364. Erasure coding: fix some minor bugs in EC CLI
+      (Walter Su via vinayakumarb)
+
+      HDFS-8391. NN should consider current EC tasks handling count from DN while
+      assigning new tasks. (umamahesh)
+
+      HDFS-8367. BlockInfoStriped uses EC schema. (Kai Sasaki via Kai Zheng)
+
+      HDFS-8352. Erasure Coding: test webhdfs read write stripe file. (waltersu4549)
+
+      HDFS-8417. Erasure Coding: Pread failed to read data starting from not-first stripe.
+      (Walter Su via jing9)
+
+      HDFS-8418. Fix the isNeededReplication calculation for Striped block in NN.
+      (Yi Liu via jing9)
+
+      HDFS-8320. Erasure coding: consolidate striping-related terminologies. (zhz)
+
+      HDFS-8366. Erasure Coding: Make the timeout parameter of polling blocking queue
+      configurable in DFSStripedOutputStream. (Li Bo)
+
+      HDFS-8378. Erasure Coding: Few improvements for the erasure coding worker.
+      (Rakesh R via waltersu4549)
+
+      HDFS-8375. Add cellSize as an XAttr to ECZone. ( Vinayakumar B via zhz).
+
+      HDFS-8428. Erasure Coding: Fix the NullPointerException when deleting file.
+      (Yi Liu via zhz).
+
+      HDFS-8323. Bump GenerationStamp for write faliure in DFSStripedOutputStream.
+      (Tsz Wo Nicholas Sze via jing9)
+
+      HDFS-8427. Remove dataBlockNum and parityBlockNum from BlockInfoStriped.
+      (Kai Sasaki via jing9)
+
+      HDFS-8186. Erasure coding: Make block placement policy for EC file configurable.
+      (Walter Su via zhz)
+
+      HDFS-8294. Erasure Coding: Fix Findbug warnings present in erasure coding.
+      (Rakesh R via zhz)
+
+      HDFS-8441. Erasure Coding: make condition check earlier for setReplication.
+      (waltersu4549)
+
+      HDFS-7768. Change fsck to support EC files.  (Takanobu Asanuma via szetszwo)
+
+      HDFS-8382. Remove chunkSize and initialize from erasure coder. (Kai Zheng)
+
+      HDFS-8408. Revisit and refactor ErasureCodingInfo (vinayakumarb)
+
+      HDFS-8479. Erasure coding: fix striping related logic in FSDirWriteFileOp to
+      sync with HDFS-8421. (Zhe Zhang via jing9)
+
+      HDFS-8481. Erasure coding: remove workarounds in client side stripped blocks
+      recovering. (zhz)
+
+      HDFS-8336. Expose some administrative erasure coding operations to HdfsAdmin
+      (Uma Maheswara Rao G via vinayakumarb)
+
+      HDFS-8444. Erasure Coding: fix cannot rename a zone dir
+      (Walter Su via vinayakumarb)
+
+      HDFS-8517. Fix a decoding issue in stripped block recovering in client side.
+      (Kai Zheng via jing9)
+
+      HDFS-8453. Erasure coding: properly handle start offset for internal blocks
+      in a block group. (Zhe Zhang via jing9)
+
+      HDFS-7621. Erasure Coding: update the Balancer/Mover data migration logic.
+      (Walter Su via zhz)
+
+      HDFS-8328. Follow-on to update decode for DataNode striped blocks
+      reconstruction. (yliu)
+
+      HDFS-8319. Erasure Coding: support decoding for stateful read.
+      (Jing Zhao via zhz)
+
+      HDFS-8460. Erasure Coding: stateful read result doesn't match data
+      occasionally because of flawed test. (Walter Su via zhz)
+
+      HDFS-8556. Erasure Coding: Fix usage of 'createZone' (vinayakumarb)
+
+      HDFS-8571. Fix TestErasureCodingCli test (Vinayakumar B via waltersu4549)
+
+      HDFS-8450. Erasure Coding: Consolidate erasure coding zone related
+      implementation into a single class (Rakesh R via vinayakumarb)
+
+      HDFS-8585. Erasure Coding: Remove dataBlockNum and parityBlockNum from
+      StripedBlockProto. (Yi Liu via jing9)
+
+      HDFS-8559. Erasure Coding: fix non-protobuf fsimage for striped blocks.
+      (Jing Zhao via yliu)
+
+      HDFS-8580. Erasure coding: Persist cellSize in BlockInfoStriped and
+      StripedBlocksFeature. (Walter Su via jing9)
+
+      HDFS-8466. Refactor BlockInfoContiguous and fix NPE in
+      TestBlockInfo#testCopyConstructor() (vinayakumarb)
+
+      HDFS-8254. Avoid assigning a leading streamer in StripedDataStreamer to
+      tolerate datanode failure. (Tsz Wo Nicholas Sze via jing9)
+
+      HDFS-8543. Erasure Coding: processOverReplicatedBlock() handles striped block.
+      (Walter Su via jing9)
+
+      HDFS-8602. Erasure Coding: Client can't read(decode) the EC files which have
+      corrupt blocks. (jing9 and Kai Sasaki)
+
+      HDFS-8567. Erasure Coding: SafeMode handles file smaller than a full stripe.
+      (Walter Su via jing9)
+
+      HDFS-8253. DFSStripedOutputStream.closeThreads releases cellBuffers
+      multiple times.  (Kai Sasaki via szetszwo)
+
+      HDFS-8468. 2 RPC calls for every file read in DFSClient#open(..) resulting in
+      double Audit log entries (vinayakumarb)
+
+      HDFS-8684. Erasure Coding: fix some block number calculation for striped
+      block. (yliu)
+
+      HDFS-8461. Erasure coding: fix priority level of UnderReplicatedBlocks for
+      striped block. (Walter Su via jing9)
+
+      HDFS-8719. Erasure Coding: client generates too many small packets when
+      writing parity data. (Li Bo via waltersu4549)
+
+      HDFS-8563. Erasure Coding: fsck handles file smaller than a full stripe.
+      (Walter Su via jing9)
+
+      HDFS-8484. Erasure coding: Two contiguous blocks occupy IDs belong to same
+      striped group. (Walter Su via jing9)
+
+      HDFS-8744. Erasure Coding: the number of chunks in packet is not updated
+      when writing parity data. (Li Bo)
+
+      HDFS-8669. Erasure Coding: handle missing internal block locations in
+      DFSStripedInputStream. (jing9)
+
+      HDFS-8702. Erasure coding: update BlockManager.blockHasEnoughRacks(..) logic
+      for striped block. (Kai Sasaki via jing9)
+
+      HDFS-8734. Erasure Coding: fix one cell need two packets. (Walter Su via
+      jing9)
+
+      HDFS-8619. Erasure Coding: revisit replica counting for striped blocks.
+      (Jing Zhao via yliu)
+
+      HDFS-8058. Erasure coding: use BlockInfo[] for both striped and contiguous
+      blocks in INodeFile. (Zhe Zhang and Yi Liu via zhz)
+
+      HDFS-8787. Erasure coding: rename BlockInfoContiguousUC and BlockInfoStripedUC
+      to be consistent with trunk. (zhz)
+
+      HDFS-8433. Erasure coding: set blockToken in LocatedStripedBlock.(waltersu4549)
+
+      HDFS-8760. Erasure Coding: reuse BlockReader when reading the same block in pread.
+      (jing9)
+
+      HDFS-8781. Erasure Coding: Correctly handle BlockManager#InvalidateBlocks for
+      striped block. (Yi Liu via jing9)
+
+      HDFS-8813. Erasure Coding: Client no need to decode missing parity blocks.
+      (Walter Su via jing9)
+
+      HDFS-8798. Erasure Coding: fix DFSStripedInputStream/DFSStripedOutputStream
+      re-fetch token when expired. (Walter Su via jing9)
+
+      HDFS-8769. Erasure coding: unit test for SequentialBlockGroupIdGenerator.
+      (Rakesh R via waltersu4549)
+
+      HDFS-8202. Improve end to end stirpping file test to add erasure recovering
+      test. (Xinwei Qin via zhz)
+
+      HDFS-8804. Erasure Coding: use DirectBufferPool in DFSStripedInputStream for
+      buffer allocation. (jing9)
+
+      HDFS-8399. Erasure Coding: unit test the behaviour of BlockManager recovery
+      work for the deleted blocks. (Rakesh R via zhz)
+
+      HDFS-8857. Erasure Coding: Fix ArrayIndexOutOfBoundsException in
+      TestWriteStripedFileWithFailure. (Li Bo)
+
+      HDFS-8827. Erasure Coding: Fix NPE when NameNode processes over-replicated
+      striped blocks. (Walter Su and Takuya Fukudome via jing9)
+
+      HDFS-8854. Erasure coding: add ECPolicy to replace schema+cellSize in
+      hadoop-hdfs. (Walter Su via zhz)
+
+      HDFS-8220. Erasure Coding: StripedDataStreamer fails to handle the
+      blocklocations which doesn't satisfy BlockGroupSize. (Rakesh R via zhz)
+
+      HDFS-8838. Erasure Coding: Tolerate datanode failures in DFSStripedOutputStream
+      when the data length is small. (szetszwo via waltersu4549)
+
+      HDFS-8909. Erasure coding: update BlockInfoContiguousUC and BlockInfoStripedUC
+      to use BlockUnderConstructionFeature. (Jing Zhao via waltersu4549)
+
+      HDFS-8937. Erasure coding: do not throw exception when setting replication on
+      EC file. (Gao Rui via jing9)
+
+      HDFS-8978. Erasure coding: fix 2 failed tests of DFSStripedOutputStream.
+      (Walter Su via jing9)
+
+      HDFS-8833. Erasure coding: store EC schema and cell size in INodeFile and
+      eliminate notion of EC zones. (zhz)
+
+      HDFS-8853. Erasure Coding: Provide ECSchema validation when setting EC
+      policy. (andreina via zhz)
+
+      HDFS-8975. Erasure coding : Fix random failure in TestSafeModeWithStripedFile
+      (J.Andreina via vinayakumarb)
+
+      HDFS-7351. Document the HDFS Erasure Coding feature.
+      (umamahesh and Zhe Zhang via wang)
+
+      HDFS-8899. Erasure Coding: use threadpool for EC recovery tasks on DataNode.
+      (Rakesh R via zhz)
+
+      HDFS-9088. Cleanup erasure coding documentation. (wang via zhz)
+
+      HDFS-9097. Erasure coding: update EC command "-s" flag to "-p" when
+      specifying policy. (zhz)
+
+      HDFS-9086. Rename dfs.datanode.stripedread.threshold.millis to
+      dfs.datanode.stripedread.timeout.millis. (wang via zhz)
+
+      HDFS-8550. Erasure Coding: Fix FindBugs Multithreaded correctness Warning.
+      (Rakesh R via zhz)
+
+      HDFS-9113. ErasureCodingWorker#processErasureCodingTasks should not fail to process
+      remaining tasks due to one invalid ECTask (umamahesh)
+
+      HDFS-9091. Erasure Coding: Provide DistributedFilesystem API to
+      getAllErasureCodingPolicies. (Rakesh R via zhz)
+
+      HDFS-8920. Erasure Coding: when recovering lost blocks, logs can be too
+      verbose and hurt performance. (Rui Li via Kai Zheng)
+
+      HDFS-8882. Erasure Coding: Use datablocks, parityblocks and cell size from
+      ErasureCodingPolicy (Vinayakumar B via zhz)
+
+      HDFS-9040. Erasure coding: coordinate data streamers in
+      DFSStripedOutputStream. (jing9 and Walter Su)
+
+      HDFS-9185. Fix null tracer in ErasureCodingWorker. (Rakesh R via jing9)
+
+      HDFS-9180. Update excluded DataNodes in DFSStripedOutputStream based on failures
+      in data streamers. (jing9)
+
+      HDFS-8557. Allow to configure RS and XOR raw coders (Kai Zheng)
+
+      HDFS-9206. Inconsistent default value of dfs.datanode.stripedread.buffer.size.
+      (Walter Su via jing9)
+
+      HDFS-9209. Erasure coding: Add apache license header in
+      TestFileStatusWithECPolicy.java. (Surendra Singh Lilhore via jing9)
+
+      HDFS-8438. Erasure Coding: Allow concat striped files if they have the same
+      ErasureCodingPolicy. (Walter Su via jing9)
+
+      HDFS-9275. Wait previous ErasureCodingWork to finish before schedule
+      another one. (Walter Su via yliu)
 
 Release 2.8.0 - UNRELEASED
 
@@ -362,7 +864,13 @@ Release 2.8.0 - UNRELEASED
 
     HDFS-8155. Support OAuth2 in WebHDFS. (jghoman)
 
+    HDFS-9184. Logging HDFS operation's caller context into audit logs.
+    (Mingliang Liu via jitendra)
+
   IMPROVEMENTS
+
+    HDFS-9257. improve error message for "Absolute path required" in INode.java
+    to contain the rejected path (Marcell Szabo via harsh)
 
     HDFS-2390. dfsadmin -setBalancerBandwidth does not validate -ve value
     (Gautam Gopalakrishnan via harsh)
@@ -1003,6 +1511,121 @@ Release 2.8.0 - UNRELEASED
     HDFS-8971. Remove guards when calling LOG.debug() and LOG.trace() in client
     package. (Mingliang Liu via wheat9)
 
+    HDFS-9175. Change scope of 'AccessTokenProvider.getAccessToken()' and
+    'CredentialBasedAccessTokenProvider.getCredential()' abstract methods to
+    public (Santhosh Nayak via cnauroth)
+
+    HDFS-9015. Refactor TestReplicationPolicy to test different block placement
+    policies. (Ming Ma via lei)
+
+    HDFS-8979. Clean up checkstyle warnings in hadoop-hdfs-client module.
+    (Mingliang Liu via wheat9)
+
+    HDFS-9155. OEV should treat .XML files as XML even when the file name
+    extension is uppercase (nijel via cmccabe)
+
+    HDFS-9170. Move libhdfs / fuse-dfs / libwebhdfs to hdfs-client. (wheat9)
+
+    HDFS-8164. cTime is 0 in VERSION file for newly formatted NameNode.
+    (Xiao Chen via Yongjun Zhang)
+
+    HDFS-9181. Better handling of exceptions thrown during upgrade shutdown.
+    (Wei-Chiu Chuang via Yongjun Zhang)
+
+    HDFS-9110. Use Files.walkFileTree in NNUpgradeUtil#doPreUpgrade for
+    better efficiency. (Charlie Helin via wang)
+
+    HDFS-8988. Use LightWeightHashSet instead of LightWeightLinkedSet in
+    BlockManager#excessReplicateMap. (yliu)
+
+    HDFS-9006. Provide BlockPlacementPolicy that supports upgrade domain.
+    (Ming Ma via lei)
+
+    HDFS-1172. Blocks in newly completed files are considered under-replicated
+    too quickly. (Masatake Iwasaki via jing9)
+
+    HDFS-9238. Update TestFileCreation.testLeaseExpireHardLimit() to avoid using
+    DataNodeTestUtils.getFile(). (Tony Wu via lei)
+
+    HDFS-9223. Code cleanup for DatanodeDescriptor and HeartbeatManager. (jing9)
+
+    HDFS-9188. Make block corruption related tests FsDataset-agnostic. (lei)
+
+    HDFS-9205. Do not schedule corrupt blocks for replication.  (szetszwo)
+
+    HDFS-9250. Add Precondition check to LocatedBlock#addCachedLoc.
+    (Xiao Chen via wang)
+
+    HDFS-9251. Refactor TestWriteToReplica and TestFsDatasetImpl to avoid
+    explicitly creating Files in the tests code. (lei)
+
+    HDFS-8647. Abstract BlockManager's rack policy into BlockPlacementPolicy.
+    (Brahma Reddy Battula via mingma)
+
+    HDFS-9225. Fix intermittent test failure of
+    TestBlockManager.testBlocksAreNotUnderreplicatedInSingleRack.
+    (Masatake Iwasaki via wang)
+
+    HDFS-7087. Ability to list /.reserved. (Xiao Chen via wang)
+
+    HDFS-9264. Minor cleanup of operations on FsVolumeList#volumes.
+    (Walter Su via lei)
+
+    HDFS-8808. dfs.image.transfer.bandwidthPerSec should not apply to
+    -bootstrapStandby (zhz)
+
+    HDFS-4015. Safemode should count and report orphaned blocks.
+    (Anu Engineer via Arpit Agarwal)
+
+    HDFS-7284. Add more debug info to
+    BlockInfoUnderConstruction#setGenerationStampAndVerifyReplicas.
+    (Wei-Chiu Chuang via Yongjun Zhang)
+
+    HDFS-9284. fsck command should not print exception trace when file not
+    found. (Jagadesh Kiran N via wang)
+
+    HDFS-9291. Fix TestInterDatanodeProtocol to be FsDataset-agnostic. (lei)
+
+    HDFS-8945. Update the description about replica placement in HDFS
+    Architecture documentation. (Masatake Iwasaki via wang)
+
+    HDFS-9292. Make TestFileConcorruption independent to underlying FsDataset
+    Implementation. (lei)
+
+    HDFS-9259. Make SO_SNDBUF size configurable at DFSClient side for hdfs
+    write scenario. (Mingliang Liu via mingma)
+
+    HDFS-9299. Give ReplicationMonitor a readable thread name (Staffan Friberg
+    via Colin P. McCabe)
+
+    HDFS-9307. fuseConnect should be private to fuse_connect.c (Mingliang Liu
+    via Colin P. McCabe)
+
+    HDFS-9311. Support optional offload of NameNode HA service health checks to
+    a separate RPC server. (cnauroth)
+
+    HDFS-9255. Consolidate block recovery related implementation into a single
+    class. (Walter Su via zhz)
+
+    HDFS-9295. Add a thorough test of the full KMS code path. 
+    (Daniel Templeton via zhz)
+
+    HDFS-8545. Refactor FS#getUsed() to use ContentSummary and add an API to fetch
+    the total file length from a specific path (J.Andreina via vinayakumarb)
+
+    HDFS-9229. Expose size of NameNode directory as a metric.
+    (Surendra Singh Lilhore via zhz)
+
+    HDFS-9339. Extend full test of KMS ACLs. (Daniel Templeton via zhz)
+
+    HDFS-9007. Fix HDFS Balancer to honor upgrade domain policy. (Ming Ma via lei)
+
+    HDFS-9331. Modify TestNameNodeMXBean#testNameNodeMXBeanInfo() to account for
+    filesystem entirely allocated for DFS use. (Tony Wu via lei)
+
+    HDFS-9363. Add fetchReplica() to FsDatasetTestUtils to return FsDataset-agnostic
+    replica. (Tony Wu via lei)
+
   OPTIMIZATIONS
 
     HDFS-8026. Trace FSOutputSummer#writeChecksumChunks rather than
@@ -1025,6 +1648,28 @@ Release 2.8.0 - UNRELEASED
     HDFS-8829. Make SO_RCVBUF and SO_SNDBUF size configurable for
     DataTransferProtocol sockets and allow configuring auto-tuning (He Tianyi
     via Colin P. McCabe)
+
+    HDFS-9139. Enable parallel JUnit tests for HDFS Pre-commit
+    (Chris Nauroth and Vinayakumar B via vinayakumarb)
+
+    HDFS-9145. Tracking methods that hold FSNamesytemLock for too long.
+    (Mingliang Liu via wheat9)
+
+    HDFS-9167. Update pom.xml in other modules to depend on hdfs-client instead
+    of hdfs. (Mingliang Liu via wheat9)
+
+    HDFS-9253. Refactor tests of libhdfs into a directory. (wheat9)
+
+    HDFS-9280. Document NFS gateway export point parameter. (Xiao Chen via zhz)
+
+    HDFS-9297. Update TestBlockMissingException to use corruptBlockOnDataNodesByDeletingBlockFile().
+    (Tony Wu via lei)
+
+    HDFS-9168. Move client side unit test to hadoop-hdfs-client. (wheat9)
+
+    HDFS-9312. Fix TestReplication to be FsDataset-agnostic. (lei)
+
+    HDFS-9308. Add truncateMeta() and deleteMeta() to MiniDFSCluster. (Tony Wu via lei)
 
   BUG FIXES
 
@@ -1348,10 +1993,6 @@ Release 2.8.0 - UNRELEASED
     HDFS-8847. change TestHDFSContractAppend to not override
     testRenameFileBeingAppended method. (Zhihai Xu)
 
-    HDFS-8850. VolumeScanner thread exits with exception if there is no block
-    pool to be scanned but there are suspicious blocks. (Colin Patrick McCabe
-    via yliu)
-
     HDFS-8844. TestHDFSCLI does not cleanup the test directory (Masatake
     Iwasaki via Colin P. McCabe)
 
@@ -1471,6 +2112,145 @@ Release 2.8.0 - UNRELEASED
     HDFS-9001. DFSUtil.getNsServiceRpcUris() can return too many entries in a
     non-HA, non-federated cluster. (Daniel Templeton via atm)
 
+    HDFS-9100. HDFS Balancer does not respect dfs.client.use.datanode.hostname.
+    (Casey Brotherton via Yongjun Zhang)
+
+    HDFS-9191. Typo in Hdfs.java. NoSuchElementException is misspelled.
+    (Catherine Palmer via jghoman)
+
+    HDFS-9193. Fix incorrect references the usages of the DN in dfshealth.js.
+    (Chang Li via wheat9)
+
+    HADOOP-11098. [JDK8] Max Non Heap Memory default changed between JDK7
+    and 8 (ozawa).
+
+    HDFS-9151. Mover should print the exit status/reason on console like
+    balancer tool. (Surendra singh lilhore via vinayakumarb)
+
+    HDFS-9154. [OEV-Doc] : Document does not mention about "-f" and "-r" options
+    (nijel via vinayakumarb)
+
+    HDFS-7899. Improve EOF error message (Jagadesh Kiran N via vinayakumarb)
+
+    HDFS-9196. Fix TestWebHdfsContentLength. (Masatake Iwasaki via jing9)
+
+    HDFS-9159. [OIV] : return value of the command is not correct if invalid
+    value specified in "-p (processor)" option (nijel via vinayakumarb)
+
+    HDFS-9176. Fix TestDirectoryScanner#testThrottling often fails.
+    (Daniel Templeton via lei)
+
+    HDFS-9137. DeadLock between DataNode#refreshVolumes and
+    BPOfferService#registrationSucceeded. (Uma Maheswara Rao G via yliu)
+
+    HDFS-9142. Separating Configuration object for namenode(s) in
+    MiniDFSCluster. (Siqi Li via mingma)
+
+    HDFS-8941. DistributedFileSystem listCorruptFileBlocks API should
+    resolve relative path. (Rakesh R via wang)
+
+    HDFS-9215. Suppress the RAT warnings in hdfs-native-client module. (wheat9)
+
+    HDFS-9222. Add hadoop-hdfs-client as a dependency of
+    hadoop-hdfs-native-client. (Mingliang Liu via wheat9)
+
+    HDFS-9224. TestFileTruncate fails intermittently with BindException
+    (Brahma Reddy Battula via vinayakumarb)
+
+    HDFS-9160. [OIV-Doc] : Missing details of 'delimited' for processor options
+    (nijel via vinayakumarb)
+
+    HDFS-9235. hdfs-native-client build getting errors when built with cmake
+    2.6. (Eric Payne via wheat9)
+
+    HDFS-8779. WebUI fails to display block IDs that are larger than 2^53 - 1.
+    (wheat9)
+
+    HDFS-9187. Fix null pointer error in Globber when FS was not constructed
+    via FileSystem#createFileSystem (cmccabe)
+
+    HDFS-9157. [OEV and OIV] : Unnecessary parsing for mandatory arguements if
+    '-h' option is specified as the only option (nijel via vinayakumarb)
+
+    HDFS-9237. NPE at TestDataNodeVolumeFailureToleration#tearDown.
+    (Brahma Reddy Battula via ozawa)
+
+    HDFS-9208. Disabling atime may fail clients like distCp. (Kihwal Lee via
+    yliu)
+
+    HDFS-9270. TestShortCircuitLocalRead should not leave socket after unit
+    test (Masatake Iwasaki via Colin P. McCabe)
+
+    HDFS-3059. ssl-server.xml causes NullPointer. (Xiao Chen via wang)
+
+    HDFS-9274. Default value of dfs.datanode.directoryscan.throttle.limit.ms.per.sec
+    should be consistent. (Yi Liu via zhz)
+
+    HDFS-9273. ACLs on root directory may be lost after NN restart.
+    (Xiao Chen via cnauroth)
+
+    HDFS-9286. HttpFs does not parse ACL syntax correctly for operation
+    REMOVEACLENTRIES. (Wei-Chiu Chuang via cnauroth)
+
+    HDFS-9301. HDFS clients can't construct HdfsConfiguration instances.
+    (Mingliang Liu via wheat9)
+
+    HDFS-9304. Add HdfsClientConfigKeys class to TestHdfsConfigFields
+    #configurationClasses. (Mingliang Liu via wheat9)
+
+    HDFS-9268. fuse_dfs chown crashes when uid is passed as -1 (cmccabe)
+
+    HDFS-9231. fsck doesn't list correct file path when Bad Replicas/Blocks
+    are in a snapshot. (Xiao Chen via Yongjun Zhang)
+
+    HDFS-9302. WebHDFS throws NullPointerException if newLength is not
+    provided. (Jagadesh Kiran N via yliu)
+
+    HDFS-9297. Decomissioned capacity should not be considered for 
+    configured/used capacity (Contributed by Kuhu Shukla)
+
+    HDFS-9044. Give Priority to FavouredNodes , before selecting
+    nodes from FavouredNode's Node Group (J.Andreina via vinayakumarb)
+
+    HDFS-9332. Fix Precondition failures from NameNodeEditLogRoller while
+    saving namespace. (wang)
+
+    HDFS-9343. Empty caller context considered invalid. (Mingliang Liu via
+    Arpit Agarwal)
+
+    HDFS-9329. TestBootstrapStandby#testRateThrottling is flaky because fsimage
+    size is smaller than IO buffer size. (zhz)
+
+    HDFS-9313. Possible NullPointerException in BlockManager if no excess
+    replica can be chosen. (mingma)
+
+    HDFS-9354. Fix TestBalancer#testBalancerWithZeroThreadsForMove on Windows.
+    (Xiaoyu Yao via cnauroth)
+
+    HDFS-9362. TestAuditLogger#testAuditLoggerWithCallContext assumes Unix line
+    endings, fails on Windows. (cnauroth)
+
+    HDFS-9351. checkNNStartup() need to be called when fsck calls
+    FSNamesystem.getSnapshottableDirs(). (Xiao Chen via Yongjun Zhang)
+
+    HDFS-9357. NN UI renders icons of decommissioned DN incorrectly.
+    (Surendra Singh Lilhore via wheat9)
+
+Release 2.7.3 - UNRELEASED
+
+  INCOMPATIBLE CHANGES
+
+  NEW FEATURES
+
+  IMPROVEMENTS
+
+  OPTIMIZATIONS
+
+  BUG FIXES
+
+    HDFS-9289. Make DataStreamer#block thread safe and verify genStamp in
+    commitBlock. (Chang Li via zhz)
+
 Release 2.7.2 - UNRELEASED
 
   INCOMPATIBLE CHANGES
@@ -1486,6 +2266,9 @@ Release 2.7.2 - UNRELEASED
 
     HDFS-8099. Change "DFSInputStream has been closed already" message to
     debug log level (Charles Lamb via Colin P. McCabe)
+
+    HDFS-9221. HdfsServerConstants#ReplicaState#getState should avoid calling
+    values() since it creates a temporary array. (Staffan Friberg via yliu)
 
   OPTIMIZATIONS
 
@@ -1520,6 +2303,28 @@ Release 2.7.2 - UNRELEASED
 
     HDFS-9106. Transfer failure during pipeline recovery causes permanent
     write failures (kihwal)
+
+    HDFS-8850. VolumeScanner thread exits with exception if there is no block
+    pool to be scanned but there are suspicious blocks. (Colin Patrick McCabe
+    via yliu)
+
+    HDFS-9178. Slow datanode I/O can cause a wrong node to be marked bad
+    (kihwal)
+
+    HDFS-8676. Delayed rolling upgrade finalization can cause heartbeat
+    expiration. (Walter Su via kihwal)
+
+    HDFS-9220. Reading small file (< 512 bytes) that is open for append fails
+    due to incorrect checksum (Jing Zhao via kihwal)
+
+    HDFS-9290. DFSClient#callAppend() is not backward compatible for slightly
+    older NameNodes. (Tony Wu via kihwal)
+
+    HDFS-9305. Delayed heartbeat processing causes storm of subsequent
+    heartbeats. (Arpit Agarwal)
+
+    HDFS-9317. Document fsck -blockId and -storagepolicy options in branch-2.7.
+    (aajisaka)
 
 Release 2.7.1 - 2015-07-06
 
@@ -2543,7 +3348,19 @@ Release 2.7.0 - 2015-04-20
       HDFS-7700. Document quota support for storage types. (Xiaoyu Yao via
       Arpit Agarwal)
 
-Release 2.6.2 - UNRELEASED
+Release 2.6.3 - UNRELEASED
+
+  INCOMPATIBLE CHANGES
+
+  NEW FEATURES
+
+  IMPROVEMENTS
+
+  OPTIMIZATIONS
+
+  BUG FIXES
+
+Release 2.6.2 - 2015-10-28
 
   INCOMPATIBLE CHANGES
 

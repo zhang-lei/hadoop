@@ -416,7 +416,7 @@ public abstract class Server {
    * if this request took too much time relative to other requests
    * we consider that as a slow RPC. 3 is a magic number that comes
    * from 3 sigma deviation. A very simple explanation can be found
-   * by searching for 68–95–99.7 rule. We flag an RPC as slow RPC
+   * by searching for 68-95-99.7 rule. We flag an RPC as slow RPC
    * if and only if it falls above 99.7% of requests. We start this logic
    * only once we have enough sample size.
    */
@@ -579,9 +579,16 @@ public abstract class Server {
     private long timestamp;               // time received when response is null
                                           // time served when response is not null
     private ByteBuffer rpcResponse;       // the response for this call
+    private AtomicInteger responseWaitCount = new AtomicInteger(1);
     private final RPC.RpcKind rpcKind;
     private final byte[] clientId;
     private final TraceScope traceScope; // the HTrace scope on the server side
+    private final CallerContext callerContext; // the call context
+
+    private Call(Call call) {
+      this(call.callId, call.retryCount, call.rpcRequest, call.connection,
+          call.rpcKind, call.clientId, call.traceScope, call.callerContext);
+    }
 
     public Call(int id, int retryCount, Writable param, 
         Connection connection) {
@@ -591,11 +598,12 @@ public abstract class Server {
 
     public Call(int id, int retryCount, Writable param, Connection connection,
         RPC.RpcKind kind, byte[] clientId) {
-      this(id, retryCount, param, connection, kind, clientId, null);
+      this(id, retryCount, param, connection, kind, clientId, null, null);
     }
 
     public Call(int id, int retryCount, Writable param, Connection connection,
-        RPC.RpcKind kind, byte[] clientId, TraceScope traceScope) {
+        RPC.RpcKind kind, byte[] clientId, TraceScope traceScope,
+        CallerContext callerContext) {
       this.callId = id;
       this.retryCount = retryCount;
       this.rpcRequest = param;
@@ -605,6 +613,7 @@ public abstract class Server {
       this.rpcKind = kind;
       this.clientId = clientId;
       this.traceScope = traceScope;
+      this.callerContext = callerContext;
     }
     
     @Override
@@ -615,6 +624,46 @@ public abstract class Server {
 
     public void setResponse(ByteBuffer response) {
       this.rpcResponse = response;
+    }
+
+    /**
+     * Allow a IPC response to be postponed instead of sent immediately
+     * after the handler returns from the proxy method.  The intended use
+     * case is freeing up the handler thread when the response is known,
+     * but an expensive pre-condition must be satisfied before it's sent
+     * to the client.
+     */
+    @InterfaceStability.Unstable
+    @InterfaceAudience.LimitedPrivate({"HDFS"})
+    public void postponeResponse() {
+      int count = responseWaitCount.incrementAndGet();
+      assert count > 0 : "response has already been sent";
+    }
+
+    @InterfaceStability.Unstable
+    @InterfaceAudience.LimitedPrivate({"HDFS"})
+    public void sendResponse() throws IOException {
+      int count = responseWaitCount.decrementAndGet();
+      assert count >= 0 : "response has already been sent";
+      if (count == 0) {
+        connection.sendResponse(this);
+      }
+    }
+
+    @InterfaceStability.Unstable
+    @InterfaceAudience.LimitedPrivate({"HDFS"})
+    public void abortResponse(Throwable t) throws IOException {
+      // don't send response if the call was already sent or aborted.
+      if (responseWaitCount.getAndSet(-1) > 0) {
+        // clone the call to prevent a race with the other thread stomping
+        // on the response while being sent.  the original call is
+        // effectively discarded since the wait count won't hit zero
+        Call call = new Call(this);
+        setupResponse(new ByteArrayOutputStream(), call,
+            RpcStatusProto.FATAL, RpcErrorCodeProto.ERROR_RPC_SERVER,
+            null, t.getClass().getName(), StringUtils.stringifyException(t));
+        call.sendResponse();
+      }
     }
 
     // For Schedulable
@@ -1118,6 +1167,13 @@ public abstract class Server {
     //
     void doRespond(Call call) throws IOException {
       synchronized (call.connection.responseQueue) {
+        // must only wrap before adding to the responseQueue to prevent
+        // postponed responses from being encrypted and sent out of order.
+        if (call.connection.useWrap) {
+          ByteArrayOutputStream response = new ByteArrayOutputStream();
+          wrapWithSasl(response, call);
+          call.setResponse(ByteBuffer.wrap(response.toByteArray()));
+        }
         call.connection.responseQueue.addLast(call);
         if (call.connection.responseQueue.size() == 1) {
           processResponse(call.connection.responseQueue, true);
@@ -1226,10 +1282,6 @@ public abstract class Server {
     private final Call authFailedCall = new Call(AUTHORIZATION_FAILED_CALL_ID,
         RpcConstants.INVALID_RETRY_COUNT, null, this);
     private ByteArrayOutputStream authFailedResponse = new ByteArrayOutputStream();
-    
-    private final Call saslCall = new Call(AuthProtocol.SASL.callId,
-        RpcConstants.INVALID_RETRY_COUNT, null, this);
-    private final ByteArrayOutputStream saslResponse = new ByteArrayOutputStream();
     
     private boolean sentNegotiate = false;
     private boolean useWrap = false;
@@ -1542,21 +1594,24 @@ public abstract class Server {
       }
       return response.build();
     }
-    
+
     private void doSaslReply(Message message) throws IOException {
+      final Call saslCall = new Call(AuthProtocol.SASL.callId,
+          RpcConstants.INVALID_RETRY_COUNT, null, this);
+      final ByteArrayOutputStream saslResponse = new ByteArrayOutputStream();
       setupResponse(saslResponse, saslCall,
           RpcStatusProto.SUCCESS, null,
           new RpcResponseWrapper(message), null, null);
-      responder.doRespond(saslCall);
+      saslCall.sendResponse();
     }
-    
+
     private void doSaslReply(Exception ioe) throws IOException {
       setupResponse(authFailedResponse, authFailedCall,
           RpcStatusProto.FATAL, RpcErrorCodeProto.FATAL_UNAUTHORIZED,
           null, ioe.getClass().getName(), ioe.getLocalizedMessage());
-      responder.doRespond(authFailedCall);
+      authFailedCall.sendResponse();
     }
-    
+
     private void disposeSasl() {
       if (saslServer != null) {
         try {
@@ -1763,7 +1818,7 @@ public abstract class Server {
         setupResponse(buffer, fakeCall, 
             RpcStatusProto.FATAL, RpcErrorCodeProto.FATAL_VERSION_MISMATCH,
             null, VersionMismatch.class.getName(), errMsg);
-        responder.doRespond(fakeCall);
+        fakeCall.sendResponse();
       } else if (clientVersion >= 3) {
         Call fakeCall = new Call(-1, RpcConstants.INVALID_RETRY_COUNT, null,
             this);
@@ -1771,7 +1826,7 @@ public abstract class Server {
         setupResponseOldVersionFatal(buffer, fakeCall,
             null, VersionMismatch.class.getName(), errMsg);
 
-        responder.doRespond(fakeCall);
+        fakeCall.sendResponse();
       } else if (clientVersion == 2) { // Hadoop 0.18.3
         Call fakeCall = new Call(0, RpcConstants.INVALID_RETRY_COUNT, null,
             this);
@@ -1781,8 +1836,7 @@ public abstract class Server {
         WritableUtils.writeString(out, VersionMismatch.class.getName());
         WritableUtils.writeString(out, errMsg);
         fakeCall.setResponse(ByteBuffer.wrap(buffer.toByteArray()));
-        
-        responder.doRespond(fakeCall);
+        fakeCall.sendResponse();
       }
     }
     
@@ -1790,7 +1844,7 @@ public abstract class Server {
       Call fakeCall = new Call(0, RpcConstants.INVALID_RETRY_COUNT, null, this);
       fakeCall.setResponse(ByteBuffer.wrap(
           RECEIVED_HTTP_REQ_RESPONSE.getBytes(Charsets.UTF_8)));
-      responder.doRespond(fakeCall);
+      fakeCall.sendResponse();
     }
 
     /** Reads the connection context following the connection header
@@ -1941,7 +1995,7 @@ public abstract class Server {
         setupResponse(authFailedResponse, call,
             RpcStatusProto.FATAL, wrse.getRpcErrorCodeProto(), null,
             ioe.getClass().getName(), ioe.getMessage());
-        responder.doRespond(call);
+        call.sendResponse();
         throw wrse;
       }
     }
@@ -2029,9 +2083,18 @@ public abstract class Server {
         }
       }
 
+      CallerContext callerContext = null;
+      if (header.hasCallerContext()) {
+        callerContext =
+            new CallerContext.Builder(header.getCallerContext().getContext())
+                .setSignature(header.getCallerContext().getSignature()
+                    .toByteArray())
+                .build();
+      }
+
       Call call = new Call(header.getCallId(), header.getRetryCount(),
           rpcRequest, this, ProtoUtil.convert(header.getRpcKind()),
-          header.getClientId().toByteArray(), traceScope);
+          header.getClientId().toByteArray(), traceScope, callerContext);
 
       if (callQueue.isClientBackoffEnabled()) {
         // if RPC queue is full, we will ask the RPC client to back off by
@@ -2151,6 +2214,10 @@ public abstract class Server {
       }
     }
 
+    private void sendResponse(Call call) throws IOException {
+      responder.doRespond(call);
+    }
+
     /**
      * Get service class for connection
      * @return the serviceClass
@@ -2219,6 +2286,8 @@ public abstract class Server {
             traceScope = call.traceScope;
             traceScope.getSpan().addTimelineAnnotation("called");
           }
+          // always update the current call context
+          CallerContext.setCurrent(call.callerContext);
 
           try {
             // Make the call as the user via Subject.doAs, thus associating
@@ -2274,21 +2343,17 @@ public abstract class Server {
           }
           CurCall.set(null);
           synchronized (call.connection.responseQueue) {
-            // setupResponse() needs to be sync'ed together with 
-            // responder.doResponse() since setupResponse may use
-            // SASL to encrypt response data and SASL enforces
-            // its own message ordering.
-            setupResponse(buf, call, returnStatus, detailedErr, 
+            setupResponse(buf, call, returnStatus, detailedErr,
                 value, errorClass, error);
-            
-            // Discard the large buf and reset it back to smaller size 
-            // to free up heap
+
+            // Discard the large buf and reset it back to smaller size
+            // to free up heap.
             if (buf.size() > maxRespSize) {
               LOG.warn("Large response size " + buf.size() + " for call "
                   + call.toString());
               buf = new ByteArrayOutputStream(INITIAL_RESP_BUF_SIZE);
             }
-            responder.doRespond(call);
+            call.sendResponse();
           }
         } catch (InterruptedException e) {
           if (running) {                          // unexpected -- log it
@@ -2484,7 +2549,7 @@ public abstract class Server {
    * @param error error message, if the call failed
    * @throws IOException
    */
-  private void setupResponse(ByteArrayOutputStream responseBuf,
+  private static void setupResponse(ByteArrayOutputStream responseBuf,
                              Call call, RpcStatusProto status, RpcErrorCodeProto erCode,
                              Writable rv, String errorClass, String error) 
   throws IOException {
@@ -2542,9 +2607,6 @@ public abstract class Server {
       out.writeInt(fullLength);
       header.writeDelimitedTo(out);
     }
-    if (call.connection.useWrap) {
-      wrapWithSasl(responseBuf, call);
-    }
     call.setResponse(ByteBuffer.wrap(responseBuf.toByteArray()));
   }
   
@@ -2572,18 +2634,14 @@ public abstract class Server {
     out.writeInt(OLD_VERSION_FATAL_STATUS);   // write FATAL_STATUS
     WritableUtils.writeString(out, errorClass);
     WritableUtils.writeString(out, error);
-
-    if (call.connection.useWrap) {
-      wrapWithSasl(response, call);
-    }
     call.setResponse(ByteBuffer.wrap(response.toByteArray()));
   }
   
   
-  private void wrapWithSasl(ByteArrayOutputStream response, Call call)
+  private static void wrapWithSasl(ByteArrayOutputStream response, Call call)
       throws IOException {
     if (call.connection.saslServer != null) {
-      byte[] token = response.toByteArray();
+      byte[] token = call.rpcResponse.array();
       // synchronization may be needed since there can be multiple Handler
       // threads using saslServer to wrap responses.
       synchronized (call.connection.saslServer) {

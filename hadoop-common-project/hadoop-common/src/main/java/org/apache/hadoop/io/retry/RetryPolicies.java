@@ -139,7 +139,17 @@ public class RetryPolicies {
       Map<Class<? extends Exception>, RetryPolicy> exceptionToPolicyMap) {
     return new RemoteExceptionDependentRetry(defaultPolicy, exceptionToPolicyMap);
   }
-  
+
+  /**
+   * A retry policy for exceptions other than RemoteException.
+   */
+  public static final RetryPolicy retryOtherThanRemoteException(
+      RetryPolicy defaultPolicy,
+      Map<Class<? extends Exception>, RetryPolicy> exceptionToPolicyMap) {
+    return new OtherThanRemoteExceptionDependentRetry(defaultPolicy,
+        exceptionToPolicyMap);
+  }
+
   public static final RetryPolicy failoverOnNetworkException(int maxFailovers) {
     return failoverOnNetworkException(TRY_ONCE_THEN_FAIL, maxFailovers);
   }
@@ -371,7 +381,7 @@ public class RetryPolicies {
     /**
      * Parse the given string as a MultipleLinearRandomRetry object.
      * The format of the string is "t_1, n_1, t_2, n_2, ...",
-     * where t_i and n_i are the i-th pair of sleep time and number of retires.
+     * where t_i and n_i are the i-th pair of sleep time and number of retries.
      * Note that the white spaces in the string are ignored.
      *
      * @return the parsed object, or null if the parsing fails.
@@ -489,7 +499,37 @@ public class RetryPolicies {
       return policy.shouldRetry(e, retries, failovers, isIdempotentOrAtMostOnce);
     }
   }
-  
+
+  static class OtherThanRemoteExceptionDependentRetry implements RetryPolicy {
+
+    private RetryPolicy defaultPolicy;
+    private Map<Class<? extends Exception>, RetryPolicy> exceptionToPolicyMap;
+
+    public OtherThanRemoteExceptionDependentRetry(RetryPolicy defaultPolicy,
+        Map<Class<? extends Exception>,
+        RetryPolicy> exceptionToPolicyMap) {
+      this.defaultPolicy = defaultPolicy;
+      this.exceptionToPolicyMap = exceptionToPolicyMap;
+    }
+
+    @Override
+    public RetryAction shouldRetry(Exception e, int retries, int failovers,
+        boolean isIdempotentOrAtMostOnce) throws Exception {
+      RetryPolicy policy = null;
+      // ignore Remote Exception
+      if (e instanceof RemoteException) {
+        // do nothing
+      } else {
+        policy = exceptionToPolicyMap.get(e.getClass());
+      }
+      if (policy == null) {
+        policy = defaultPolicy;
+      }
+      return policy.shouldRetry(
+          e, retries, failovers, isIdempotentOrAtMostOnce);
+    }
+  }
+
   static class ExponentialBackoffRetry extends RetryLimited {
     
     public ExponentialBackoffRetry(

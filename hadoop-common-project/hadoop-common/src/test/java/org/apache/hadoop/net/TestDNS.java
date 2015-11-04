@@ -25,10 +25,12 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.net.InetAddress;
 
+import javax.naming.CommunicationException;
 import javax.naming.NameNotFoundException;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.util.Shell;
 import org.apache.hadoop.util.Time;
 
 import org.junit.Test;
@@ -36,6 +38,7 @@ import org.junit.Test;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.*;
+import static org.junit.Assume.assumeTrue;
 
 /**
  * Test host name and IP resolution and caching.
@@ -165,8 +168,8 @@ public class TestDNS {
     InetAddress localhost = getLocalIPAddr();
     try {
       String s = DNS.reverseDns(localhost, null);
-      LOG.info("Local revers DNS hostname is " + s);
-    } catch (NameNotFoundException e) {
+      LOG.info("Local reverse DNS hostname is " + s);
+    } catch (NameNotFoundException | CommunicationException e) {
       if (!localhost.isLinkLocalAddress() || localhost.isLoopbackAddress()) {
         //these addresses probably won't work with rDNS anyway, unless someone
         //has unusual entries in their DNS server mapping 1.0.0.127 to localhost
@@ -184,13 +187,17 @@ public class TestDNS {
    *
    * This test may fail on some misconfigured test machines that don't have
    * an entry for "localhost" in their hosts file. This entry is correctly
-   * configured out of the box on common Linux distributions, OS X and
-   * Windows.
+   * configured out of the box on common Linux distributions and OS X.
+   *
+   * Windows refuses to resolve 127.0.0.1 to "localhost" despite the presence of
+   * this entry in the hosts file.  We skip the test on Windows to avoid
+   * reporting a spurious failure.
    *
    * @throws Exception
    */
   @Test (timeout=60000)
   public void testLookupWithHostsFallback() throws Exception {
+    assumeTrue(!Shell.WINDOWS);
     final String oldHostname = changeDnsCachedHostname(DUMMY_HOSTNAME);
 
     try {
@@ -230,7 +237,7 @@ public class TestDNS {
 
   private String getLoopbackInterface() throws SocketException {
     return NetworkInterface.getByInetAddress(
-        InetAddress.getLoopbackAddress()).getDisplayName();
+        InetAddress.getLoopbackAddress()).getName();
   }
 
   /**

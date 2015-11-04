@@ -100,6 +100,7 @@ public class TestBlockManager {
     fsn = Mockito.mock(FSNamesystem.class);
     Mockito.doReturn(true).when(fsn).hasWriteLock();
     Mockito.doReturn(true).when(fsn).hasReadLock();
+    Mockito.doReturn(true).when(fsn).isRunning();
     bm = new BlockManager(fsn, conf);
     final String[] racks = {
         "/rackA",
@@ -373,9 +374,8 @@ public class TestBlockManager {
       List<DatanodeDescriptor> origNodes)
       throws Exception {
     assertEquals(0, bm.numOfUnderReplicatedBlocks());
-    addBlockOnNodes(testIndex, origNodes);
-    bm.processMisReplicatedBlocks();
-    assertEquals(0, bm.numOfUnderReplicatedBlocks());
+    BlockInfo block = addBlockOnNodes(testIndex, origNodes);
+    assertFalse(bm.isNeededReplication(block, bm.countLiveNodes(block)));
   }
   
   
@@ -595,7 +595,7 @@ public class TestBlockManager {
   public void testSafeModeIBR() throws Exception {
     DatanodeDescriptor node = spy(nodes.get(0));
     DatanodeStorageInfo ds = node.getStorageInfos()[0];
-    node.isAlive = true;
+    node.setAlive(true);
 
     DatanodeRegistration nodeReg =
         new DatanodeRegistration(node, null, null, "");
@@ -640,7 +640,7 @@ public class TestBlockManager {
     DatanodeDescriptor node = spy(nodes.get(0));
     DatanodeStorageInfo ds = node.getStorageInfos()[0];
 
-    node.isAlive = true;
+    node.setAlive(true);
 
     DatanodeRegistration nodeReg =
         new DatanodeRegistration(node, null, null, "");
@@ -672,7 +672,7 @@ public class TestBlockManager {
 
     DatanodeDescriptor node = nodes.get(0);
     DatanodeStorageInfo ds = node.getStorageInfos()[0];
-    node.isAlive = true;
+    node.setAlive(true);
     DatanodeRegistration nodeReg =  new DatanodeRegistration(node, null, null, "");
 
     // register new node
@@ -821,14 +821,15 @@ public class TestBlockManager {
     DatanodeStorageInfo delHint = new DatanodeStorageInfo(
         DFSTestUtil.getLocalDatanodeDescriptor(), new DatanodeStorage("id"));
     List<DatanodeStorageInfo> moreThan1Racks = Arrays.asList(delHint);
-    List<StorageType> excessTypes = new ArrayList<StorageType>();
-
+    List<StorageType> excessTypes = new ArrayList<>();
+    BlockPlacementPolicyDefault policyDefault =
+        (BlockPlacementPolicyDefault) bm.getBlockPlacementPolicy();
     excessTypes.add(StorageType.DEFAULT);
-    Assert.assertTrue(BlockManager.useDelHint(true, delHint, null,
-        moreThan1Racks, excessTypes));
+    Assert.assertTrue(policyDefault.useDelHint(delHint, null, moreThan1Racks,
+        null, excessTypes));
     excessTypes.remove(0);
     excessTypes.add(StorageType.SSD);
-    Assert.assertFalse(BlockManager.useDelHint(true, delHint, null,
-        moreThan1Racks, excessTypes));
+    Assert.assertFalse(policyDefault.useDelHint(delHint, null, moreThan1Racks,
+        null, excessTypes));
   }
 }

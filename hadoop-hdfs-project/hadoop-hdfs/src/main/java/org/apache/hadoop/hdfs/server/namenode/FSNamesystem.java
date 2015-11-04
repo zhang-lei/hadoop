@@ -19,6 +19,12 @@ package org.apache.hadoop.hdfs.server.namenode;
 
 import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.FS_TRASH_INTERVAL_DEFAULT;
 import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.FS_TRASH_INTERVAL_KEY;
+import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.HADOOP_CALLER_CONTEXT_ENABLED_DEFAULT;
+import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.HADOOP_CALLER_CONTEXT_ENABLED_KEY;
+import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.HADOOP_CALLER_CONTEXT_MAX_SIZE_DEFAULT;
+import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.HADOOP_CALLER_CONTEXT_MAX_SIZE_KEY;
+import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.HADOOP_CALLER_CONTEXT_SIGNATURE_MAX_SIZE_DEFAULT;
+import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.HADOOP_CALLER_CONTEXT_SIGNATURE_MAX_SIZE_KEY;
 import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.IO_FILE_BUFFER_SIZE_DEFAULT;
 import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.IO_FILE_BUFFER_SIZE_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_BLOCK_SIZE_DEFAULT;
@@ -134,7 +140,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.crypto.CryptoProtocolVersion;
 import org.apache.hadoop.crypto.key.KeyProvider.Metadata;
 import org.apache.hadoop.crypto.key.KeyProviderCryptoExtension;
-import org.apache.hadoop.crypto.key.KeyProviderCryptoExtension.EncryptedKeyVersion;
 import org.apache.hadoop.fs.BatchedRemoteIterator.BatchedListEntries;
 import org.apache.hadoop.fs.CacheFlag;
 import org.apache.hadoop.fs.ContentSummary;
@@ -187,6 +192,7 @@ import org.apache.hadoop.hdfs.protocol.RecoveryInProgressException;
 import org.apache.hadoop.hdfs.protocol.RollingUpgradeException;
 import org.apache.hadoop.hdfs.protocol.RollingUpgradeInfo;
 import org.apache.hadoop.hdfs.protocol.SnapshotAccessControlException;
+import org.apache.hadoop.hdfs.protocol.SnapshotException;
 import org.apache.hadoop.hdfs.protocol.SnapshotDiffReport;
 import org.apache.hadoop.hdfs.protocol.SnapshottableDirectoryStatus;
 import org.apache.hadoop.hdfs.protocol.datatransfer.ReplaceDatanodeOnFailure;
@@ -225,6 +231,7 @@ import org.apache.hadoop.hdfs.server.namenode.ha.HAContext;
 import org.apache.hadoop.hdfs.server.namenode.ha.StandbyCheckpointer;
 import org.apache.hadoop.hdfs.server.namenode.metrics.FSNamesystemMBean;
 import org.apache.hadoop.hdfs.server.namenode.metrics.NameNodeMetrics;
+import org.apache.hadoop.hdfs.server.namenode.snapshot.DirectorySnapshottableFeature;
 import org.apache.hadoop.hdfs.server.namenode.snapshot.Snapshot;
 import org.apache.hadoop.hdfs.server.namenode.snapshot.SnapshotManager;
 import org.apache.hadoop.hdfs.server.namenode.startupprogress.Phase;
@@ -251,6 +258,7 @@ import org.apache.hadoop.hdfs.server.protocol.StorageReport;
 import org.apache.hadoop.hdfs.server.protocol.VolumeFailureSummary;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.ipc.CallerContext;
 import org.apache.hadoop.ipc.RetriableException;
 import org.apache.hadoop.ipc.RetryCache;
 import org.apache.hadoop.ipc.Server;
@@ -363,7 +371,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       if (logger instanceof HdfsAuditLogger) {
         HdfsAuditLogger hdfsLogger = (HdfsAuditLogger) logger;
         hdfsLogger.logAuditEvent(succeeded, ugi.toString(), addr, cmd, src, dst,
-            status, ugi, dtSecretManager);
+            status, CallerContext.getCurrent(), ugi, dtSecretManager);
       } else {
         logger.logAuditEvent(succeeded, ugi.toString(), addr,
             cmd, src, dst, status);
@@ -689,6 +697,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     if (nnMetrics != null) {
       nnMetrics.setFsImageLoadTime((int) timeTakenToLoadFSImage);
     }
+    namesystem.getFSDirectory().createReservedStatuses(namesystem.getCTime());
     return namesystem;
   }
   
@@ -1458,6 +1467,11 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     return Util.stringCollectionAsURIs(dirNames);
   }
 
+  /** Threshold (ms) for long holding write lock report. */
+  static final short WRITELOCK_REPORTING_THRESHOLD = 1000;
+  /** Last time stamp for write lock. Keep the longest one for multi-entrance.*/
+  private long writeLockHeldTimeStamp;
+
   @Override
   public void readLock() {
     this.fsLock.readLock().lock();
@@ -1469,14 +1483,30 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
   @Override
   public void writeLock() {
     this.fsLock.writeLock().lock();
+    if (fsLock.getWriteHoldCount() == 1) {
+      writeLockHeldTimeStamp = monotonicNow();
+    }
   }
   @Override
   public void writeLockInterruptibly() throws InterruptedException {
     this.fsLock.writeLock().lockInterruptibly();
+    if (fsLock.getWriteHoldCount() == 1) {
+      writeLockHeldTimeStamp = monotonicNow();
+    }
   }
   @Override
   public void writeUnlock() {
+    final boolean needReport = fsLock.getWriteHoldCount() == 1 &&
+        fsLock.isWriteLockedByCurrentThread();
     this.fsLock.writeLock().unlock();
+
+    if (needReport) {
+      long writeLockInterval = monotonicNow() - writeLockHeldTimeStamp;
+      if (writeLockInterval >= WRITELOCK_REPORTING_THRESHOLD) {
+        LOG.info("FSNamesystem write lock held for " + writeLockInterval +
+            " ms via\n" + StringUtils.getStackTrace(Thread.currentThread()));
+      }
+    }
   }
   @Override
   public boolean hasWriteLock() {
@@ -1518,6 +1548,18 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     } finally {
       readUnlock();
     }
+  }
+
+  /**
+   * Get the creation time of the file system.
+   * Notice that this time is initialized to NameNode format time, and updated
+   * to upgrade time during upgrades.
+   * @return time in milliseconds.
+   * See {@link org.apache.hadoop.util.Time#now()}.
+   */
+  @VisibleForTesting
+  long getCTime() {
+    return fsImage == null ? 0 : fsImage.getStorage().getCTime();
   }
 
   /**
@@ -3687,9 +3729,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     public void run() {
       while (fsRunning && shouldRun) {
         try {
-          FSEditLog editLog = getFSImage().getEditLog();
-          long numEdits =
-              editLog.getLastWrittenTxId() - editLog.getCurSegmentTxId();
+          long numEdits = getTransactionsSinceLastLogRoll();
           if (numEdits > rollThreshold) {
             FSNamesystem.LOG.info("NameNode rolling its own edit log because"
                 + " number of edits in open segment exceeds threshold of "
@@ -3863,6 +3903,8 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     stats[ClientProtocol.GET_STATS_MISSING_BLOCKS_IDX] = getMissingBlocksCount();
     stats[ClientProtocol.GET_STATS_MISSING_REPL_ONE_BLOCKS_IDX] =
         getMissingReplOneBlocksCount();
+    stats[ClientProtocol.GET_STATS_BYTES_IN_FUTURE_BLOCKS_IDX] =
+        blockManager.getBytesInFuture();
     return stats;
   }
 
@@ -4259,13 +4301,25 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
      * Leave safe mode.
      * <p>
      * Check for invalid, under- & over-replicated blocks in the end of startup.
+     * @param force - true to force exit
      */
-    private synchronized void leave() {
+    private synchronized void leave(boolean force) {
       // if not done yet, initialize replication queues.
       // In the standby, do not populate repl queues
       if (!blockManager.isPopulatingReplQueues() && blockManager.shouldPopulateReplQueues()) {
         blockManager.initializeReplQueues();
       }
+
+
+      if (!force && (blockManager.getBytesInFuture() > 0)) {
+        LOG.error("Refusing to leave safe mode without a force flag. " +
+            "Exiting safe mode will cause a deletion of " + blockManager
+            .getBytesInFuture() + " byte(s). Please use " +
+            "-forceExit flag to exit safe mode forcefully if data loss is " +
+            "acceptable.");
+        return;
+      }
+
       long timeInSafemode = now() - startTime;
       NameNode.stateChangeLog.info("STATE* Leaving safe mode after " 
                                     + timeInSafemode/1000 + " secs");
@@ -4363,7 +4417,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       // the threshold is reached or was reached before
       if (!isOn() ||                           // safe mode is off
           extension <= 0 || threshold <= 0) {  // don't need to wait
-        this.leave(); // leave safe mode
+        this.leave(false); // leave safe mode
         return;
       }
       if (reached > 0) {  // threshold has already been reached before
@@ -4520,6 +4574,21 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
             + "the minimum number %d. ",
             numLive, datanodeThreshold);
       }
+
+      if(blockManager.getBytesInFuture() > 0) {
+        msg += "Name node detected blocks with generation stamps " +
+            "in future. This means that Name node metadata is inconsistent." +
+            "This can happen if Name node metadata files have been manually " +
+            "replaced. Exiting safe mode will cause loss of " + blockManager
+            .getBytesInFuture() + " byte(s). Please restart name node with " +
+            "right metadata or use \"hdfs dfsadmin -safemode forceExit" +
+            "if you are certain that the NameNode was started with the" +
+            "correct FsImage and edit logs. If you encountered this during" +
+            "a rollback, it is safe to exit with -safemode forceExit.";
+        return msg;
+      }
+
+
       msg += (reached > 0) ? "In safe mode extension. " : "";
       msg += "Safe mode will be turned off automatically ";
 
@@ -4621,7 +4690,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
           }
           if (safeMode.canLeave()) {
             // Leave safe mode.
-            safeMode.leave();
+            safeMode.leave(false);
             smmthread = null;
             break;
           }
@@ -4646,10 +4715,30 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       checkSuperuserPrivilege();
       switch(action) {
       case SAFEMODE_LEAVE: // leave safe mode
+        if (blockManager.getBytesInFuture() > 0) {
+          LOG.error("Refusing to leave safe mode without a force flag. " +
+              "Exiting safe mode will cause a deletion of " + blockManager
+              .getBytesInFuture() + " byte(s). Please use " +
+              "-forceExit flag to exit safe mode forcefully and data loss is " +
+              "acceptable.");
+          return isInSafeMode();
+        }
         leaveSafeMode();
         break;
       case SAFEMODE_ENTER: // enter safe mode
         enterSafeMode(false);
+        break;
+      case SAFEMODE_FORCE_EXIT:
+        if (blockManager.getBytesInFuture() > 0) {
+          LOG.warn("Leaving safe mode due to forceExit. This will cause a data "
+              + "loss of " + blockManager.getBytesInFuture() + " byte(s).");
+          safeMode.leave(true);
+          blockManager.clearBytesInFuture();
+        } else {
+          LOG.warn("forceExit used when normal exist would suffice. Treating " +
+              "force exit as normal safe mode exit.");
+        }
+        leaveSafeMode();
         break;
       default:
         LOG.error("Unexpected safe mode action");
@@ -4829,7 +4918,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
         NameNode.stateChangeLog.info("STATE* Safe mode is already OFF"); 
         return;
       }
-      safeMode.leave();
+      safeMode.leave(false);
     } finally {
       writeUnlock();
     }
@@ -6222,6 +6311,59 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     return JSON.toString(list);
   }
 
+  @Override  // NameNodeMXBean
+  public long getNumberOfSnapshottableDirs() {
+    return snapshotManager.getNumSnapshottableDirs();
+  }
+
+  /**
+   * Get the list of corrupt blocks and corresponding full file path
+   * including snapshots in given snapshottable directories.
+   * @param path Restrict corrupt files to this portion of namespace.
+   * @param snapshottableDirs Snapshottable directories. Passing in null
+   *                          will only return corrupt blocks in non-snapshots.
+   * @param cookieTab Support for continuation; cookieTab tells where
+   *                  to start from.
+   * @return a list in which each entry describes a corrupt file/block
+   * @throws IOException
+   */
+  List<String> listCorruptFileBlocksWithSnapshot(String path,
+      List<String> snapshottableDirs, String[] cookieTab) throws IOException {
+    final Collection<CorruptFileBlockInfo> corruptFileBlocks =
+        listCorruptFileBlocks(path, cookieTab);
+    List<String> list = new ArrayList<String>();
+
+    // Precalculate snapshottableFeature list
+    List<DirectorySnapshottableFeature> lsf = new ArrayList<>();
+    if (snapshottableDirs != null) {
+      for (String snap : snapshottableDirs) {
+        final INode isnap = getFSDirectory().getINode(snap, false);
+        final DirectorySnapshottableFeature sf =
+            isnap.asDirectory().getDirectorySnapshottableFeature();
+        if (sf == null) {
+          throw new SnapshotException(
+              "Directory is not a snapshottable directory: " + snap);
+        }
+        lsf.add(sf);
+      }
+    }
+
+    for (CorruptFileBlockInfo c : corruptFileBlocks) {
+      if (getFileInfo(c.path, true) != null) {
+        list.add(c.toString());
+      }
+      final Collection<String> snaps = FSDirSnapshotOp
+          .getSnapshotFiles(getFSDirectory(), lsf, c.path);
+      if (snaps != null) {
+        for (String snap : snaps) {
+          // follow the syntax of CorruptFileBlockInfo#toString()
+          list.add(c.block.getBlockName() + "\t" + snap);
+        }
+      }
+    }
+    return list;
+  }
+
   @Override  //NameNodeMXBean
   public int getDistinctVersionCount() {
     return blockManager.getDatanodeManager().getDatanodesSoftwareVersions()
@@ -6236,6 +6378,11 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
   @Override  //NameNodeMXBean
   public String getSoftwareVersion() {
     return VersionInfo.getVersion();
+  }
+
+  @Override // NameNodeStatusMXBean
+  public String getNameDirSize() {
+    return getFSImage().getStorage().getNNDirectorySize();
   }
 
   /**
@@ -7261,12 +7408,24 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
    */
   @VisibleForTesting
   static class DefaultAuditLogger extends HdfsAuditLogger {
+    private boolean isCallerContextEnabled;
+    private int callerContextMaxLen;
+    private int callerSignatureMaxLen;
 
     private boolean logTokenTrackingId;
     private Set<String> debugCmdSet = new HashSet<String>();
 
     @Override
     public void initialize(Configuration conf) {
+      isCallerContextEnabled = conf.getBoolean(
+          HADOOP_CALLER_CONTEXT_ENABLED_KEY,
+          HADOOP_CALLER_CONTEXT_ENABLED_DEFAULT);
+      callerContextMaxLen = conf.getInt(
+          HADOOP_CALLER_CONTEXT_MAX_SIZE_KEY,
+          HADOOP_CALLER_CONTEXT_MAX_SIZE_DEFAULT);
+      callerSignatureMaxLen = conf.getInt(
+          HADOOP_CALLER_CONTEXT_SIGNATURE_MAX_SIZE_KEY,
+          HADOOP_CALLER_CONTEXT_SIGNATURE_MAX_SIZE_DEFAULT);
       logTokenTrackingId = conf.getBoolean(
           DFSConfigKeys.DFS_NAMENODE_AUDIT_LOG_TOKEN_TRACKING_ID_KEY,
           DFSConfigKeys.DFS_NAMENODE_AUDIT_LOG_TOKEN_TRACKING_ID_DEFAULT);
@@ -7278,7 +7437,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     @Override
     public void logAuditEvent(boolean succeeded, String userName,
         InetAddress addr, String cmd, String src, String dst,
-        FileStatus status, UserGroupInformation ugi,
+        FileStatus status, CallerContext callerContext, UserGroupInformation ugi,
         DelegationTokenSecretManager dtSecretManager) {
 
       if (auditLog.isDebugEnabled() ||
@@ -7317,6 +7476,24 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
         }
         sb.append("\t").append("proto=");
         sb.append(NamenodeWebHdfsMethods.isWebHdfsInvocation() ? "webhdfs" : "rpc");
+        if (isCallerContextEnabled &&
+            callerContext != null &&
+            callerContext.isContextValid()) {
+          sb.append("\t").append("callerContext=");
+          if (callerContext.getContext().length() > callerContextMaxLen) {
+            sb.append(callerContext.getContext().substring(0,
+                callerContextMaxLen));
+          } else {
+            sb.append(callerContext.getContext());
+          }
+          if (callerContext.getSignature() != null &&
+              callerContext.getSignature().length > 0 &&
+              callerContext.getSignature().length <= callerSignatureMaxLen) {
+            sb.append(":");
+            sb.append(new String(callerContext.getSignature(),
+                CallerContext.SIGNATURE_ENCODING));
+          }
+        }
         logAuditMessage(sb.toString());
       }
     }
@@ -7374,6 +7551,22 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
   public ErasureCodingPolicy getErasureCodingPolicyForPath(String src)
       throws IOException {
     return FSDirErasureCodingOp.getErasureCodingPolicy(this, src);
+  }
+
+  /**
+   * Gets number of bytes in the blocks in future generation stamps.
+   *
+   * @return number of bytes that can be deleted if exited from safe mode.
+   */
+  public long getBytesInFuture() {
+    return blockManager.getBytesInFuture();
+  }
+
+  @VisibleForTesting
+  synchronized void enableSafeModeForTesting(Configuration conf) {
+    SafeModeInfo newSafemode = new SafeModeInfo(conf);
+    newSafemode.enter();
+    this.safeMode = newSafemode;
   }
 }
 

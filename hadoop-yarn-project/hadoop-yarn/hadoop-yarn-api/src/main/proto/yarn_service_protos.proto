@@ -88,6 +88,7 @@ message AllocateResponseProto {
   repeated ContainerProto increased_containers = 10;
   repeated ContainerProto decreased_containers = 11;
   optional hadoop.common.TokenProto am_rm_token = 12;
+  optional PriorityProto application_priority = 13;
 }
 
 enum SchedulerResourceTypes {
@@ -120,6 +121,13 @@ message SubmitApplicationRequestProto {
 }
 
 message SubmitApplicationResponseProto {
+}
+
+message FailApplicationAttemptRequestProto {
+  optional ApplicationAttemptIdProto application_attempt_id = 1;
+}
+
+message FailApplicationAttemptResponseProto {
 }
 
 message KillApplicationRequestProto {
@@ -223,6 +231,14 @@ message UpdateApplicationPriorityRequestProto {
 }
 
 message UpdateApplicationPriorityResponseProto {
+}
+
+message SignalContainerRequestProto {
+    required ContainerIdProto container_id = 1;
+    required SignalContainerCommandProto command = 2;
+}
+
+message SignalContainerResponseProto {
 }
 
 //////////////////////////////////////////////////////

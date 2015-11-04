@@ -26,6 +26,7 @@ import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -61,7 +62,6 @@ import org.apache.hadoop.yarn.server.resourcemanager.resource.ResourceWeights;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMApp;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppEventType;
-import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppRejectedEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppState;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptEventType;
@@ -181,7 +181,13 @@ public class FairScheduler extends
   
   // Containers whose AMs have been warned that they will be preempted soon.
   private List<RMContainer> warnedContainers = new ArrayList<RMContainer>();
-  
+
+  private float reservableNodesRatio; // percentage of available nodes
+                                      // an app can be reserved on
+
+  // Count of number of nodes per rack
+  private Map<String, Integer> nodesPerRack = new ConcurrentHashMap<>();
+
   protected boolean sizeBasedWeight; // Give larger weights to larger jobs
   protected WeightAdjuster weightAdjuster; // Can be null for no weight adjuster
   protected boolean continuousSchedulingEnabled; // Continuous Scheduling enabled or not
@@ -262,6 +268,14 @@ public class FairScheduler extends
 
   public FairSchedulerConfiguration getConf() {
     return conf;
+  }
+
+  public int getNumNodesInRack(String rackName) {
+    String rName = rackName == null ? "NULL" : rackName;
+    if (nodesPerRack.containsKey(rName)) {
+      return nodesPerRack.get(rName);
+    }
+    return 0;
   }
 
   public QueueManager getQueueManager() {
@@ -614,7 +628,8 @@ public class FairScheduler extends
               " submitted by user " + user + " with an empty queue name.";
       LOG.info(message);
       rmContext.getDispatcher().getEventHandler()
-          .handle(new RMAppRejectedEvent(applicationId, message));
+          .handle(new RMAppEvent(applicationId,
+              RMAppEventType.APP_REJECTED, message));
       return;
     }
 
@@ -625,7 +640,8 @@ public class FairScheduler extends
           + "The queue name cannot start/end with period.";
       LOG.info(message);
       rmContext.getDispatcher().getEventHandler()
-          .handle(new RMAppRejectedEvent(applicationId, message));
+          .handle(new RMAppEvent(applicationId,
+              RMAppEventType.APP_REJECTED, message));
       return;
     }
 
@@ -644,7 +660,8 @@ public class FairScheduler extends
               " cannot submit applications to queue " + queue.getName();
       LOG.info(msg);
       rmContext.getDispatcher().getEventHandler()
-          .handle(new RMAppRejectedEvent(applicationId, msg));
+          .handle(new RMAppEvent(applicationId,
+              RMAppEventType.APP_REJECTED, msg));
       return;
     }
   
@@ -742,7 +759,8 @@ public class FairScheduler extends
     if (appRejectMsg != null && rmApp != null) {
       LOG.error(appRejectMsg);
       rmContext.getDispatcher().getEventHandler().handle(
-          new RMAppRejectedEvent(rmApp.getApplicationId(), appRejectMsg));
+          new RMAppEvent(rmApp.getApplicationId(),
+              RMAppEventType.APP_REJECTED, appRejectMsg));
       return null;
     }
 
@@ -867,6 +885,12 @@ public class FairScheduler extends
       RMNode node) {
     FSSchedulerNode schedulerNode = new FSSchedulerNode(node, usePortForNodeName);
     nodes.put(node.getNodeID(), schedulerNode);
+    String rackName = node.getRackName() == null ? "NULL" : node.getRackName();
+    if (nodesPerRack.containsKey(rackName)) {
+      nodesPerRack.put(rackName, nodesPerRack.get(rackName) + 1);
+    } else {
+      nodesPerRack.put(rackName, 1);
+    }
     Resources.addTo(clusterResource, node.getTotalCapability());
     updateMaximumAllocation(schedulerNode, true);
 
@@ -913,6 +937,14 @@ public class FairScheduler extends
     }
 
     nodes.remove(rmNode.getNodeID());
+    String rackName = node.getRackName() == null ? "NULL" : node.getRackName();
+    if (nodesPerRack.containsKey(rackName)
+            && (nodesPerRack.get(rackName) > 0)) {
+      nodesPerRack.put(rackName, nodesPerRack.get(rackName) - 1);
+    } else {
+      LOG.error("Node [" + rmNode.getNodeAddress() + "] being removed from" +
+              " unknown rack [" + rackName + "] !!");
+    }
     queueMgr.getRootQueue().setSteadyFairShare(clusterResource);
     queueMgr.getRootQueue().recomputeSteadyShares();
     updateMaximumAllocation(node, false);
@@ -1212,7 +1244,8 @@ public class FairScheduler extends
       String queueName =
           resolveReservationQueueName(appAddedEvent.getQueue(),
               appAddedEvent.getApplicationId(),
-              appAddedEvent.getReservationID());
+              appAddedEvent.getReservationID(),
+              appAddedEvent.getIsAppRecovering());
       if (queueName != null) {
         addApplication(appAddedEvent.getApplicationId(),
             queueName, appAddedEvent.getUser(),
@@ -1285,7 +1318,8 @@ public class FairScheduler extends
   }
 
   private synchronized String resolveReservationQueueName(String queueName,
-      ApplicationId applicationId, ReservationId reservationID) {
+      ApplicationId applicationId, ReservationId reservationID,
+      boolean isRecovering) {
     FSQueue queue = queueMgr.getQueue(queueName);
     if ((queue == null) || !allocConf.isReservable(queue.getQueueName())) {
       return queueName;
@@ -1296,13 +1330,19 @@ public class FairScheduler extends
       String resQName = queueName + "." + reservationID.toString();
       queue = queueMgr.getQueue(resQName);
       if (queue == null) {
+        // reservation has terminated during failover
+        if (isRecovering && allocConf.getMoveOnExpiry(queueName)) {
+          // move to the default child queue of the plan
+          return getDefaultQueueForPlanQueue(queueName);
+        }
         String message =
             "Application "
                 + applicationId
                 + " submitted to a reservation which is not yet currently active: "
                 + resQName;
         this.rmContext.getDispatcher().getEventHandler()
-            .handle(new RMAppRejectedEvent(applicationId, message));
+            .handle(new RMAppEvent(applicationId,
+                RMAppEventType.APP_REJECTED, message));
         return null;
       }
       if (!queue.getParent().getQueueName().equals(queueName)) {
@@ -1311,7 +1351,8 @@ public class FairScheduler extends
                 + resQName + " which does not belong to the specified queue: "
                 + queueName;
         this.rmContext.getDispatcher().getEventHandler()
-            .handle(new RMAppRejectedEvent(applicationId, message));
+            .handle(new RMAppEvent(applicationId,
+                RMAppEventType.APP_REJECTED, message));
         return null;
       }
       // use the reservation queue to run the app
@@ -1362,6 +1403,7 @@ public class FairScheduler extends
       preemptionInterval = this.conf.getPreemptionInterval();
       waitTimeBeforeKill = this.conf.getWaitTimeBeforeKill();
       usePortForNodeName = this.conf.getUsePortForNodeName();
+      reservableNodesRatio = this.conf.getReservableNodes();
 
       updateInterval = this.conf.getUpdateInterval();
       if (updateInterval < 0) {
@@ -1741,5 +1783,9 @@ public class FairScheduler extends
       SchedContainerChangeRequest decreaseRequest,
       SchedulerApplicationAttempt attempt) {
     // TODO Auto-generated method stub    
+  }
+
+  public float getReservableNodesRatio() {
+    return reservableNodesRatio;
   }
 }

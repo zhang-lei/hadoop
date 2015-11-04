@@ -43,7 +43,8 @@ import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -57,8 +58,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import javax.net.SocketFactory;
 import javax.security.sasl.Sasl;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
@@ -128,8 +127,8 @@ public class Client {
     retryCount.set(rc);
   }
 
-  private final Cache<ConnectionId, Connection> connections =
-      CacheBuilder.newBuilder().build();
+  private ConcurrentMap<ConnectionId, Connection> connections =
+      new ConcurrentHashMap<>();
 
   private Class<? extends Writable> valueClass;   // class of call values
   private AtomicBoolean running = new AtomicBoolean(true); // if client runs
@@ -750,7 +749,12 @@ public class Client {
                       return setupSaslConnection(in2, out2);
                     }
                   });
-            } catch (Exception ex) {
+            } catch (IOException ex) {
+              if (saslRpcClient == null) {
+                // whatever happened -it can't be handled, so rethrow
+                throw ex;
+              }
+              // otherwise, assume a connection problem
               authMethod = saslRpcClient.getAuthMethod();
               if (rand == null) {
                 rand = new Random();
@@ -812,7 +816,7 @@ public class Client {
         if (t instanceof IOException) {
           markClosed((IOException)t);
         } else {
-          markClosed(new IOException("Couldn't set up IO streams", t));
+          markClosed(new IOException("Couldn't set up IO streams: " + t, t));
         }
         close();
       }
@@ -1178,7 +1182,10 @@ public class Client {
         return;
       }
 
-      connections.invalidate(remoteId);
+      // We have marked this connection as closed. Other thread could have
+      // already known it and replace this closedConnection with a new one.
+      // We should only remove this closedConnection.
+      connections.remove(remoteId, this);
 
       // close the streams and therefore the socket
       IOUtils.closeStream(out);
@@ -1265,12 +1272,12 @@ public class Client {
     }
     
     // wake up all connections
-    for (Connection conn : connections.asMap().values()) {
+    for (Connection conn : connections.values()) {
       conn.interrupt();
     }
     
     // wait until all connections are closed
-    while (connections.size() > 0) {
+    while (!connections.isEmpty()) {
       try {
         Thread.sleep(100);
       } catch (InterruptedException e) {
@@ -1289,7 +1296,6 @@ public class Client {
     ConnectionId remoteId = ConnectionId.getConnectionId(address, null, null, 0,
         conf);
     return call(RpcKind.RPC_BUILTIN, param, remoteId);
-
   }
 
   /**
@@ -1427,20 +1433,14 @@ public class Client {
       throw new IOException(e);
     }
 
-    boolean interrupted = false;
     synchronized (call) {
       while (!call.done) {
         try {
           call.wait();                           // wait for the result
         } catch (InterruptedException ie) {
-          // save the fact that we were interrupted
-          interrupted = true;
+          Thread.currentThread().interrupt();
+          throw new InterruptedIOException("Call interrupted");
         }
-      }
-
-      if (interrupted) {
-        // set the interrupt flag now that we are done waiting
-        Thread.currentThread().interrupt();
       }
 
       if (call.error != null) {
@@ -1465,14 +1465,13 @@ public class Client {
   @InterfaceAudience.Private
   @InterfaceStability.Unstable
   Set<ConnectionId> getConnectionIds() {
-    return connections.asMap().keySet();
+    return connections.keySet();
   }
   
   /** Get a connection from the pool, or create a new one and add it to the
    * pool.  Connections to a given ConnectionId are reused. */
-  private Connection getConnection(
-      final ConnectionId remoteId,
-      Call call, final int serviceClass, AtomicBoolean fallbackToSimpleAuth)
+  private Connection getConnection(ConnectionId remoteId,
+      Call call, int serviceClass, AtomicBoolean fallbackToSimpleAuth)
       throws IOException {
     if (!running.get()) {
       // the client is stopped
@@ -1483,34 +1482,30 @@ public class Client {
      * connectionsId object and with set() method. We need to manage the
      * refs for keys in HashMap properly. For now its ok.
      */
-    while(true) {
-      try {
-        connection = connections.get(remoteId, new Callable<Connection>() {
-          @Override
-          public Connection call() throws Exception {
-            return new Connection(remoteId, serviceClass);
-          }
-        });
-      } catch (ExecutionException e) {
-        Throwable cause = e.getCause();
-        // the underlying exception should normally be IOException
-        if (cause instanceof IOException) {
-          throw (IOException) cause;
-        } else {
-          throw new IOException(cause);
+    while (true) {
+      // These lines below can be shorten with computeIfAbsent in Java8
+      connection = connections.get(remoteId);
+      if (connection == null) {
+        connection = new Connection(remoteId, serviceClass);
+        Connection existing = connections.putIfAbsent(remoteId, connection);
+        if (existing != null) {
+          connection = existing;
         }
       }
+
       if (connection.addCall(call)) {
         break;
       } else {
-        connections.invalidate(remoteId);
+        // This connection is closed, should be removed. But other thread could
+        // have already known this closedConnection, and replace it with a new
+        // connection. So we should call conditional remove to make sure we only
+        // remove this closedConnection.
+        connections.remove(remoteId, connection);
       }
     }
-    
-    //we don't invoke the method below inside "synchronized (connections)"
-    //block above. The reason for that is if the server happens to be slow,
-    //it will take longer to establish a connection and that will slow the
-    //entire system down.
+
+    // If the server happens to be slow, the method below will take longer to
+    // establish a connection.
     connection.setupIOstreams(fallbackToSimpleAuth);
     return connection;
   }

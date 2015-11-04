@@ -395,8 +395,9 @@ public class DataNode extends ReconfigurableBase
   private String supergroup;
   private boolean isPermissionEnabled;
   private String dnUserName = null;
+  private BlockRecoveryWorker blockRecoveryWorker;
   private ErasureCodingWorker ecWorker;
-  final Tracer tracer;
+  private final Tracer tracer;
   private final TracerConfigurationManager tracerConfigurationManager;
   private static final int NUM_CORES = Runtime.getRuntime()
       .availableProcessors();
@@ -523,12 +524,29 @@ public class DataNode extends ReconfigurableBase
   public void reconfigurePropertyImpl(String property, String newVal)
       throws ReconfigurationException {
     if (property.equals(DFS_DATANODE_DATA_DIR_KEY)) {
+      IOException rootException = null;
       try {
         LOG.info("Reconfiguring " + property + " to " + newVal);
         this.refreshVolumes(newVal);
       } catch (IOException e) {
-        throw new ReconfigurationException(property, newVal,
-            getConf().get(property), e);
+        rootException = e;
+      } finally {
+        // Send a full block report to let NN acknowledge the volume changes.
+        try {
+          triggerBlockReport(
+              new BlockReportOptions.Factory().setIncremental(false).build());
+        } catch (IOException e) {
+          LOG.warn("Exception while sending the block report after refreshing"
+              + " volumes " + property + " to " + newVal, e);
+          if (rootException == null) {
+            rootException = e;
+          }
+        } finally {
+          if (rootException != null) {
+            throw new ReconfigurationException(property, newVal,
+                getConf().get(property), rootException);
+          }
+        }
       }
     } else {
       throw new ReconfigurationException(
@@ -768,16 +786,12 @@ public class DataNode extends ReconfigurableBase
       conf.set(DFS_DATANODE_DATA_DIR_KEY,
           Joiner.on(",").join(effectiveVolumes));
       dataDirs = getStorageLocations(conf);
-
-      // Send a full block report to let NN acknowledge the volume changes.
-      triggerBlockReport(new BlockReportOptions.Factory()
-          .setIncremental(false).build());
     }
   }
 
   /**
    * Remove volumes from DataNode.
-   * See {@link removeVolumes(final Set<File>, boolean)} for details.
+   * See {@link #removeVolumes(Set, boolean)} for details.
    *
    * @param locations the StorageLocations of the volumes to be removed.
    * @throws IOException
@@ -801,7 +815,7 @@ public class DataNode extends ReconfigurableBase
    * <li>
    *   <ul>Remove volumes and block info from FsDataset.</ul>
    *   <ul>Remove volumes from DataStorage.</ul>
-   *   <ul>Reset configuration DATA_DIR and {@link dataDirs} to represent
+   *   <ul>Reset configuration DATA_DIR and {@link #dataDirs} to represent
    *   active volumes.</ul>
    * </li>
    * @param absoluteVolumePaths the absolute path of volumes.
@@ -929,7 +943,6 @@ public class DataNode extends ReconfigurableBase
       }
     }
   }
-  
 
   private void initIpcServer(Configuration conf) throws IOException {
     InetSocketAddress ipcAddr = NetUtils.createSocketAddr(
@@ -1183,8 +1196,6 @@ public class DataNode extends ReconfigurableBase
     bpos.trySendErrorReport(errCode, errMsg);
   }
 
-
-  
   /**
    * Return the BPOfferService instance corresponding to the given block.
    * @return the BPOS
@@ -1201,8 +1212,6 @@ public class DataNode extends ReconfigurableBase
     return bpos;
   }
 
-
-  
   // used only for testing
   @VisibleForTesting
   void setHeartbeatsDisabledForTests(
@@ -1294,7 +1303,10 @@ public class DataNode extends ReconfigurableBase
 
     metrics = DataNodeMetrics.create(conf, getDisplayName());
     metrics.getJvmMetrics().setPauseMonitor(pauseMonitor);
-    
+
+    ecWorker = new ErasureCodingWorker(conf, this);
+    blockRecoveryWorker = new BlockRecoveryWorker(this);
+
     blockPoolManager = new BlockPoolManager(this);
     blockPoolManager.refreshNamenodes(conf);
 
@@ -1304,8 +1316,6 @@ public class DataNode extends ReconfigurableBase
     saslClient = new SaslDataTransferClient(dnConf.conf, 
         dnConf.saslPropsResolver, dnConf.trustedChannelResolver);
     saslServer = new SaslDataTransferServer(dnConf, blockPoolTokenSecretManager);
-    // Initialize ErasureCoding worker
-    ecWorker = new ErasureCodingWorker(conf, this);
     startMetricsLogger(conf);
   }
 
@@ -1531,6 +1541,10 @@ public class DataNode extends ReconfigurableBase
 
   List<BPOfferService> getAllBpOs() {
     return blockPoolManager.getAllNamenodeThreads();
+  }
+
+  BPOfferService getBPOfferService(String bpid){
+    return blockPoolManager.get(bpid);
   }
   
   int getBpOsCount() {
@@ -1829,8 +1843,9 @@ public class DataNode extends ReconfigurableBase
         xserver.sendOOBToPeers();
         ((DataXceiverServer) this.dataXceiverServer.getRunnable()).kill();
         this.dataXceiverServer.interrupt();
-      } catch (Throwable e) {
+      } catch (Exception e) {
         // Ignore, since the out of band messaging is advisory.
+        LOG.trace("Exception interrupting DataXceiverServer: ", e);
       }
     }
 
@@ -2816,25 +2831,25 @@ public class DataNode extends ReconfigurableBase
   }
 
   /**
-   * Convenience method, which unwraps RemoteException.
-   * @throws IOException not a RemoteException.
-   */
+  * Convenience method, which unwraps RemoteException.
+  * @throws IOException not a RemoteException.
+  */
   private static ReplicaRecoveryInfo callInitReplicaRecovery(
       InterDatanodeProtocol datanode,
       RecoveringBlock rBlock) throws IOException {
     try {
       return datanode.initReplicaRecovery(rBlock);
-    } catch(RemoteException re) {
+    } catch (RemoteException re) {
       throw re.unwrapRemoteException();
     }
   }
 
   /**
-   * Update replica with the new generation stamp and length.  
+   * Update replica with the new generation stamp and length.
    */
   @Override // InterDatanodeProtocol
   public String updateReplicaUnderRecovery(final ExtendedBlock oldBlock,
-      final long recoveryId, final long newBlockId, final long newLength)
+                                           final long recoveryId, final long newBlockId, final long newLength)
       throws IOException {
     final FsDatasetSpi<?> dataset =
         (FsDatasetSpi<?>) getDataset(oldBlock.getBlockPoolId());
@@ -2851,12 +2866,13 @@ public class DataNode extends ReconfigurableBase
     return storageID;
   }
 
-  /** A convenient class used in block recovery */
-  static class BlockRecord { 
+  /**
+   * A convenient class used in block recovery
+   */
+  static class BlockRecord {
     final DatanodeID id;
     final InterDatanodeProtocol datanode;
     final ReplicaRecoveryInfo rInfo;
-    
     private String storageID;
 
     BlockRecord(DatanodeID id,
@@ -2881,7 +2897,10 @@ public class DataNode extends ReconfigurableBase
     }
   }
 
-  /** Recover a block */
+
+  /**
+   * Recover a block
+   */
   private void recoverBlock(RecoveringBlock rBlock) throws IOException {
     ExtendedBlock block = rBlock.getBlock();
     String blookPoolId = block.getBlockPoolId();
@@ -2890,13 +2909,13 @@ public class DataNode extends ReconfigurableBase
     int errorCount = 0;
 
     //check generation stamps
-    for(DatanodeID id : datanodeids) {
+    for (DatanodeID id : datanodeids) {
       try {
         BPOfferService bpos = blockPoolManager.get(blookPoolId);
         DatanodeRegistration bpReg = bpos.bpRegistration;
-        InterDatanodeProtocol datanode = bpReg.equals(id)?
-            this: DataNode.createInterDataNodeProtocolProxy(id, getConf(),
-                dnConf.socketTimeout, dnConf.connectToDnViaHostname);
+        InterDatanodeProtocol datanode = bpReg.equals(id) ?
+            this : DataNode.createInterDataNodeProtocolProxy(id, getConf(),
+            dnConf.socketTimeout, dnConf.connectToDnViaHostname);
         ReplicaRecoveryInfo info = callInitReplicaRecovery(datanode, rBlock);
         if (info != null &&
             info.getGenerationStamp() >= block.getGenerationStamp() &&
@@ -2906,14 +2925,14 @@ public class DataNode extends ReconfigurableBase
       } catch (RecoveryInProgressException ripE) {
         InterDatanodeProtocol.LOG.warn(
             "Recovery for replica " + block + " on data-node " + id
-            + " is already in progress. Recovery id = "
-            + rBlock.getNewGenerationStamp() + " is aborted.", ripE);
+                + " is already in progress. Recovery id = "
+                + rBlock.getNewGenerationStamp() + " is aborted.", ripE);
         return;
       } catch (IOException e) {
         ++errorCount;
         InterDatanodeProtocol.LOG.warn(
-            "Failed to obtain replica info for block (=" + block 
-            + ") from datanode (=" + id + ")", e);
+            "Failed to obtain replica info for block (=" + block
+                + ") from datanode (=" + id + ")", e);
       }
     }
 
@@ -2930,7 +2949,8 @@ public class DataNode extends ReconfigurableBase
    *
    * @param bpid Block pool Id
    * @return Namenode corresponding to the bpid
-   * @throws IOException if unable to get the corresponding NameNode
+   * @throws IOException if unable to get the corresponding NameNode Block
+   *                     synchronization
    */
   public DatanodeProtocolClientSideTranslatorPB getActiveNamenodeForBP(String bpid)
       throws IOException {
@@ -2938,7 +2958,7 @@ public class DataNode extends ReconfigurableBase
     if (bpos == null) {
       throw new IOException("No block pool offer service for bpid=" + bpid);
     }
-    
+
     DatanodeProtocolClientSideTranslatorPB activeNN = bpos.getActiveNN();
     if (activeNN == null) {
       throw new IOException(
@@ -2947,13 +2967,15 @@ public class DataNode extends ReconfigurableBase
     return activeNN;
   }
 
-  /** Block synchronization */
+  /**
+   * Block synchronization
+   */
   void syncBlock(RecoveringBlock rBlock,
-                         List<BlockRecord> syncList) throws IOException {
+                 List<BlockRecord> syncList) throws IOException {
     ExtendedBlock block = rBlock.getBlock();
     final String bpid = block.getBlockPoolId();
     DatanodeProtocolClientSideTranslatorPB nn =
-      getActiveNamenodeForBP(block.getBlockPoolId());
+        getActiveNamenodeForBP(block.getBlockPoolId());
 
     long recoveryId = rBlock.getNewGenerationStamp();
     boolean isTruncateRecovery = rBlock.getNewBlock() != null;
@@ -2977,15 +2999,17 @@ public class DataNode extends ReconfigurableBase
     // Calculate the best available replica state.
     ReplicaState bestState = ReplicaState.RWR;
     long finalizedLength = -1;
-    for(BlockRecord r : syncList) {
+    for (BlockRecord r : syncList) {
       assert r.rInfo.getNumBytes() > 0 : "zero length replica";
-      ReplicaState rState = r.rInfo.getOriginalReplicaState(); 
-      if(rState.getValue() < bestState.getValue())
+      ReplicaState rState = r.rInfo.getOriginalReplicaState();
+      if (rState.getValue() < bestState.getValue()) {
         bestState = rState;
-      if(rState == ReplicaState.FINALIZED) {
-        if(finalizedLength > 0 && finalizedLength != r.rInfo.getNumBytes())
+      }
+      if (rState == ReplicaState.FINALIZED) {
+        if (finalizedLength > 0 && finalizedLength != r.rInfo.getNumBytes()) {
           throw new IOException("Inconsistent size of finalized replicas. " +
               "Replica " + r.rInfo + " expected size: " + finalizedLength);
+        }
         finalizedLength = r.rInfo.getNumBytes();
       }
     }
@@ -2995,24 +3019,25 @@ public class DataNode extends ReconfigurableBase
     List<BlockRecord> participatingList = new ArrayList<BlockRecord>();
     final ExtendedBlock newBlock = new ExtendedBlock(bpid, blockId,
         -1, recoveryId);
-    switch(bestState) {
+    switch (bestState) {
     case FINALIZED:
       assert finalizedLength > 0 : "finalizedLength is not positive";
-      for(BlockRecord r : syncList) {
+      for (BlockRecord r : syncList) {
         ReplicaState rState = r.rInfo.getOriginalReplicaState();
-        if(rState == ReplicaState.FINALIZED ||
-           rState == ReplicaState.RBW &&
-                      r.rInfo.getNumBytes() == finalizedLength)
+        if (rState == ReplicaState.FINALIZED ||
+            rState == ReplicaState.RBW &&
+                r.rInfo.getNumBytes() == finalizedLength) {
           participatingList.add(r);
+        }
       }
       newBlock.setNumBytes(finalizedLength);
       break;
     case RBW:
     case RWR:
       long minLength = Long.MAX_VALUE;
-      for(BlockRecord r : syncList) {
+      for (BlockRecord r : syncList) {
         ReplicaState rState = r.rInfo.getOriginalReplicaState();
-        if(rState == bestState) {
+        if (rState == bestState) {
           minLength = Math.min(minLength, r.rInfo.getNumBytes());
           participatingList.add(r);
         }
@@ -3023,12 +3048,13 @@ public class DataNode extends ReconfigurableBase
     case TEMPORARY:
       assert false : "bad replica state: " + bestState;
     }
-    if(isTruncateRecovery)
+    if (isTruncateRecovery) {
       newBlock.setNumBytes(rBlock.getNewBlock().getNumBytes());
+    }
 
     List<DatanodeID> failedList = new ArrayList<DatanodeID>();
     final List<BlockRecord> successList = new ArrayList<BlockRecord>();
-    for(BlockRecord r : participatingList) {
+    for (BlockRecord r : participatingList) {
       try {
         r.updateReplicaUnderRecovery(bpid, recoveryId, blockId,
             newBlock.getNumBytes());
@@ -3043,9 +3069,9 @@ public class DataNode extends ReconfigurableBase
     // If any of the data-nodes failed, the recovery fails, because
     // we never know the actual state of the replica on failed data-nodes.
     // The recovery should be started over.
-    if(!failedList.isEmpty()) {
+    if (!failedList.isEmpty()) {
       StringBuilder b = new StringBuilder();
-      for(DatanodeID id : failedList) {
+      for (DatanodeID id : failedList) {
         b.append("\n  " + id);
       }
       throw new IOException("Cannot recover " + block + ", the following "
@@ -3055,7 +3081,7 @@ public class DataNode extends ReconfigurableBase
     // Notify the name-node about successfully recovered replicas.
     final DatanodeID[] datanodes = new DatanodeID[successList.size()];
     final String[] storages = new String[datanodes.length];
-    for(int i = 0; i < datanodes.length; i++) {
+    for (int i = 0; i < datanodes.length; i++) {
       final BlockRecord r = successList.get(i);
       datanodes[i] = r.id;
       storages[i] = r.storageID;
@@ -3064,15 +3090,14 @@ public class DataNode extends ReconfigurableBase
         newBlock.getGenerationStamp(), newBlock.getNumBytes(), true, false,
         datanodes, storages);
   }
-  
+
   private static void logRecoverBlock(String who, RecoveringBlock rb) {
     ExtendedBlock block = rb.getBlock();
     DatanodeInfo[] targets = rb.getLocations();
-    
     LOG.info(who + " calls recoverBlock(" + block
         + ", targets=[" + Joiner.on(", ").join(targets) + "]"
         + ((rb.getNewBlock() == null) ? ", newGenerationStamp="
-            + rb.getNewGenerationStamp() : ", newBlock=" + rb.getNewBlock())
+        + rb.getNewGenerationStamp() : ", newBlock=" + rb.getNewBlock())
         + ")");
   }
 
@@ -3514,7 +3539,11 @@ public class DataNode extends ReconfigurableBase
     checkSuperuserPrivilege();
     tracerConfigurationManager.removeSpanReceiver(id);
   }
-  
+
+  public BlockRecoveryWorker getBlockRecoveryWorker(){
+    return blockRecoveryWorker;
+  }
+
   public ErasureCodingWorker getErasureCodingWorker(){
     return ecWorker;
   }
@@ -3585,5 +3614,9 @@ public class DataNode extends ReconfigurableBase
   @VisibleForTesting
   ScheduledThreadPoolExecutor getMetricsLoggerTimer() {
     return metricsLoggerTimer;
+  }
+
+  public Tracer getTracer() {
+    return tracer;
   }
 }

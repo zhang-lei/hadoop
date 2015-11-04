@@ -56,29 +56,9 @@ public class DatanodeDescriptor extends DatanodeInfo {
   public static final Logger LOG =
       LoggerFactory.getLogger(DatanodeDescriptor.class);
   public static final DatanodeDescriptor[] EMPTY_ARRAY = {};
-
-  // Stores status of decommissioning.
-  // If node is not decommissioning, do not use this object for anything.
-  public final DecommissioningStatus decommissioningStatus =
-      new DecommissioningStatus();
-
-  private long curBlockReportId = 0;
-
-  private BitSet curBlockReportRpcsSeen = null;
-
-  public int updateBlockReportContext(BlockReportContext context) {
-    if (curBlockReportId != context.getReportId()) {
-      curBlockReportId = context.getReportId();
-      curBlockReportRpcsSeen = new BitSet(context.getTotalRpcs());
-    }
-    curBlockReportRpcsSeen.set(context.getCurRpc());
-    return curBlockReportRpcsSeen.cardinality();
-  }
-
-  public void clearBlockReportContext() {
-    curBlockReportId = 0;
-    curBlockReportRpcsSeen = null;
-  }
+  private static final int BLOCKS_SCHEDULED_ROLL_INTERVAL = 600*1000; //10min
+  private static final List<DatanodeStorageInfo> EMPTY_STORAGE_INFO_LIST =
+      ImmutableList.of();
 
   /** Block and targets pair */
   @InterfaceAudience.Private
@@ -95,7 +75,7 @@ public class DatanodeDescriptor extends DatanodeInfo {
 
   /** A BlockTargetPair queue. */
   private static class BlockQueue<E> {
-    private final Queue<E> blockq = new LinkedList<E>();
+    private final Queue<E> blockq = new LinkedList<>();
 
     /** Size of the queue */
     synchronized int size() {return blockq.size();}
@@ -121,7 +101,7 @@ public class DatanodeDescriptor extends DatanodeInfo {
     /**
      * Returns <tt>true</tt> if the queue contains the specified element.
      */
-    boolean contains(E e) {
+    synchronized boolean contains(E e) {
       return blockq.contains(e);
     }
 
@@ -129,9 +109,6 @@ public class DatanodeDescriptor extends DatanodeInfo {
       blockq.clear();
     }
   }
-
-  private final Map<String, DatanodeStorageInfo> storageMap = 
-      new HashMap<>();
 
   /**
    * A list of CachedBlock objects on this datanode.
@@ -161,6 +138,18 @@ public class DatanodeDescriptor extends DatanodeInfo {
     }
   }
 
+  // Stores status of decommissioning.
+  // If node is not decommissioning, do not use this object for anything.
+  public final DecommissioningStatus decommissioningStatus =
+      new DecommissioningStatus();
+
+  private long curBlockReportId = 0;
+
+  private BitSet curBlockReportRpcsSeen = null;
+
+  private final Map<String, DatanodeStorageInfo> storageMap =
+      new HashMap<>();
+
   /**
    * The blocks which we want to cache on this DataNode.
    */
@@ -180,18 +169,6 @@ public class DatanodeDescriptor extends DatanodeInfo {
   private final CachedBlocksList pendingUncached = 
       new CachedBlocksList(this, CachedBlocksList.Type.PENDING_UNCACHED);
 
-  public CachedBlocksList getPendingCached() {
-    return pendingCached;
-  }
-
-  public CachedBlocksList getCached() {
-    return cached;
-  }
-
-  public CachedBlocksList getPendingUncached() {
-    return pendingUncached;
-  }
-
   /**
    * The time when the last batch of caching directives was sent, in
    * monotonic milliseconds.
@@ -200,9 +177,8 @@ public class DatanodeDescriptor extends DatanodeInfo {
 
   // isAlive == heartbeats.contains(this)
   // This is an optimization, because contains takes O(n) time on Arraylist
-  public boolean isAlive = false;
-  public boolean needKeyUpdate = false;
-
+  private boolean isAlive = false;
+  private boolean needKeyUpdate = false;
   
   // A system administrator can tune the balancer bandwidth parameter
   // (dfs.balance.bandwidthPerSec) dynamically by calling
@@ -234,7 +210,6 @@ public class DatanodeDescriptor extends DatanodeInfo {
   private EnumCounters<StorageType> prevApproxBlocksScheduled
       = new EnumCounters<>(StorageType.class);
   private long lastBlocksScheduledRollTime = 0;
-  private static final int BLOCKS_SCHEDULED_ROLL_INTERVAL = 600*1000; //10min
   private int volumeFailures = 0;
   private VolumeFailureSummary volumeFailureSummary = null;
   
@@ -245,7 +220,7 @@ public class DatanodeDescriptor extends DatanodeInfo {
   private boolean disallowed = false;
 
   // The number of replication work pending before targets are determined
-  private int PendingReplicationWithoutTargets = 0;
+  private int pendingReplicationWithoutTargets = 0;
 
   // HB processing can use it to tell if it is the first HB since DN restarted
   private boolean heartbeatedSinceRegistration = false;
@@ -268,6 +243,48 @@ public class DatanodeDescriptor extends DatanodeInfo {
                             String networkLocation) {
     super(nodeID, networkLocation);
     updateHeartbeatState(StorageReport.EMPTY_ARRAY, 0L, 0L, 0, 0, null);
+  }
+
+  public int updateBlockReportContext(BlockReportContext context) {
+    if (curBlockReportId != context.getReportId()) {
+      curBlockReportId = context.getReportId();
+      curBlockReportRpcsSeen = new BitSet(context.getTotalRpcs());
+    }
+    curBlockReportRpcsSeen.set(context.getCurRpc());
+    return curBlockReportRpcsSeen.cardinality();
+  }
+
+  public void clearBlockReportContext() {
+    curBlockReportId = 0;
+    curBlockReportRpcsSeen = null;
+  }
+
+  public CachedBlocksList getPendingCached() {
+    return pendingCached;
+  }
+
+  public CachedBlocksList getCached() {
+    return cached;
+  }
+
+  public CachedBlocksList getPendingUncached() {
+    return pendingUncached;
+  }
+
+  public boolean isAlive() {
+    return isAlive;
+  }
+
+  public void setAlive(boolean isAlive) {
+    this.isAlive = isAlive;
+  }
+
+  public boolean needKeyUpdate() {
+    return needKeyUpdate;
+  }
+
+  public void setNeedKeyUpdate(boolean needKeyUpdate) {
+    this.needKeyUpdate = needKeyUpdate;
   }
 
   @VisibleForTesting
@@ -304,9 +321,6 @@ public class DatanodeDescriptor extends DatanodeInfo {
       return false;
     }
   }
-
-  static final private List<DatanodeStorageInfo> EMPTY_STORAGE_INFO_LIST =
-      ImmutableList.of();
 
   List<DatanodeStorageInfo> removeZombieStorages() {
     List<DatanodeStorageInfo> zombies = null;
@@ -373,10 +387,10 @@ public class DatanodeDescriptor extends DatanodeInfo {
   public void clearBlockQueues() {
     synchronized (invalidateBlocks) {
       this.invalidateBlocks.clear();
-      this.recoverBlocks.clear();
-      this.replicateBlocks.clear();
-      this.erasurecodeBlocks.clear();
     }
+    this.recoverBlocks.clear();
+    this.replicateBlocks.clear();
+    this.erasurecodeBlocks.clear();
     // pendingCached, cached, and pendingUncached are protected by the
     // FSN lock.
     this.pendingCached.clear();
@@ -578,16 +592,12 @@ public class DatanodeDescriptor extends DatanodeInfo {
     return new BlockIterator(getStorageInfos());
   }
 
-  Iterator<BlockInfo> getBlockIterator(final String storageID) {
-    return new BlockIterator(getStorageInfo(storageID));
-  }
-
   void incrementPendingReplicationWithoutTargets() {
-    PendingReplicationWithoutTargets++;
+    pendingReplicationWithoutTargets++;
   }
 
   void decrementPendingReplicationWithoutTargets() {
-    PendingReplicationWithoutTargets--;
+    pendingReplicationWithoutTargets--;
   }
 
   /**
@@ -640,7 +650,7 @@ public class DatanodeDescriptor extends DatanodeInfo {
    * The number of work items that are pending to be replicated
    */
   int getNumberOfBlocksToBeReplicated() {
-    return PendingReplicationWithoutTargets + replicateBlocks.size();
+    return pendingReplicationWithoutTargets + replicateBlocks.size();
   }
 
   /**
@@ -649,16 +659,6 @@ public class DatanodeDescriptor extends DatanodeInfo {
   @VisibleForTesting
   public int getNumberOfBlocksToBeErasureCoded() {
     return erasurecodeBlocks.size();
-  }
-
-  /**
-   * The number of block invalidation items that are pending to 
-   * be sent to the datanode
-   */
-  int getNumberOfBlocksToBeInvalidated() {
-    synchronized (invalidateBlocks) {
-      return invalidateBlocks.size();
-    }
   }
 
   public List<BlockTargetPair> getReplicationCommand(int maxTransfers) {
@@ -703,7 +703,6 @@ public class DatanodeDescriptor extends DatanodeInfo {
    *
    * @param t requested storage type
    * @param blockSize requested block size
-   * @return
    */
   public DatanodeStorageInfo chooseStorage4Block(StorageType t,
       long blockSize) {
@@ -713,8 +712,7 @@ public class DatanodeDescriptor extends DatanodeInfo {
     long remaining = 0;
     DatanodeStorageInfo storage = null;
     for (DatanodeStorageInfo s : getStorageInfos()) {
-      if (s.getState() == State.NORMAL &&
-          s.getStorageType() == t) {
+      if (s.getState() == State.NORMAL && s.getStorageType() == t) {
         if (storage == null) {
           storage = s;
         }
@@ -750,7 +748,7 @@ public class DatanodeDescriptor extends DatanodeInfo {
 
   /** Increment the number of blocks scheduled. */
   void incrementBlocksScheduled(StorageType t) {
-    currApproxBlocksScheduled.add(t, 1);;
+    currApproxBlocksScheduled.add(t, 1);
   }
   
   /** Decrement the number of blocks scheduled. */
@@ -794,7 +792,7 @@ public class DatanodeDescriptor extends DatanodeInfo {
     
     synchronized void set(int underRep,
         int onlyRep, int underConstruction) {
-      if (isDecommissionInProgress() == false) {
+      if (!isDecommissionInProgress()) {
         return;
       }
       underReplicatedBlocks = underRep;
@@ -804,21 +802,21 @@ public class DatanodeDescriptor extends DatanodeInfo {
 
     /** @return the number of under-replicated blocks */
     public synchronized int getUnderReplicatedBlocks() {
-      if (isDecommissionInProgress() == false) {
+      if (!isDecommissionInProgress()) {
         return 0;
       }
       return underReplicatedBlocks;
     }
     /** @return the number of decommission-only replicas */
     public synchronized int getDecommissionOnlyReplicas() {
-      if (isDecommissionInProgress() == false) {
+      if (!isDecommissionInProgress()) {
         return 0;
       }
       return decommissionOnlyReplicas;
     }
     /** @return the number of under-replicated blocks in open files */
     public synchronized int getUnderReplicatedInOpenFiles() {
-      if (isDecommissionInProgress() == false) {
+      if (!isDecommissionInProgress()) {
         return 0;
       }
       return underReplicatedInOpenFiles;
@@ -829,7 +827,7 @@ public class DatanodeDescriptor extends DatanodeInfo {
     }
     /** @return start time */
     public synchronized long getStartTime() {
-      if (isDecommissionInProgress() == false) {
+      if (!isDecommissionInProgress()) {
         return 0;
       }
       return startTime;
@@ -951,8 +949,7 @@ public class DatanodeDescriptor extends DatanodeInfo {
   }
   
   /**
-   * checks whether atleast first block report has been received
-   * @return
+   * @return whether at least first block report has been received
    */
   public boolean checkBlockReportReceived() {
     if(this.getStorageInfos().length == 0) {

@@ -26,9 +26,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.StorageType;
 import org.apache.hadoop.hdfs.protocol.BlockStoragePolicy;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
-import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
-import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.net.NetworkTopology;
 import org.apache.hadoop.net.Node;
 import org.apache.hadoop.net.NodeBase;
@@ -125,14 +123,14 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
       }
 
       Set<Node> favoriteAndExcludedNodes = excludedNodes == null ?
-          new HashSet<Node>() : new HashSet<Node>(excludedNodes);
+          new HashSet<Node>() : new HashSet<>(excludedNodes);
       final List<StorageType> requiredStorageTypes = storagePolicy
           .chooseStorageTypes((short)numOfReplicas);
       final EnumMap<StorageType, Integer> storageTypes =
           getRequiredStorageTypes(requiredStorageTypes);
 
       // Choose favored nodes
-      List<DatanodeStorageInfo> results = new ArrayList<DatanodeStorageInfo>();
+      List<DatanodeStorageInfo> results = new ArrayList<>();
       boolean avoidStaleNodes = stats != null
           && stats.isAvoidingStaleDataNodesForWrite();
 
@@ -140,20 +138,9 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
       numOfReplicas = maxNodesAndReplicas[0];
       int maxNodesPerRack = maxNodesAndReplicas[1];
 
-      for (int i = 0; i < favoredNodes.size() && results.size() < numOfReplicas; i++) {
-        DatanodeDescriptor favoredNode = favoredNodes.get(i);
-        // Choose a single node which is local to favoredNode.
-        // 'results' is updated within chooseLocalNode
-        final DatanodeStorageInfo target = chooseLocalStorage(favoredNode,
-            favoriteAndExcludedNodes, blocksize, maxNodesPerRack,
-            results, avoidStaleNodes, storageTypes, false);
-        if (target == null) {
-          LOG.warn("Could not find a target for file " + src
-              + " with favored node " + favoredNode); 
-          continue;
-        }
-        favoriteAndExcludedNodes.add(target.getDatanodeDescriptor());
-      }
+      chooseFavouredNodes(src, numOfReplicas, favoredNodes,
+          favoriteAndExcludedNodes, blocksize, maxNodesPerRack, results,
+          avoidStaleNodes, storageTypes);
 
       if (results.size() < numOfReplicas) {
         // Not enough favored nodes, choose other nodes.
@@ -179,6 +166,29 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
     }
   }
 
+  protected void chooseFavouredNodes(String src, int numOfReplicas,
+      List<DatanodeDescriptor> favoredNodes,
+      Set<Node> favoriteAndExcludedNodes, long blocksize, int maxNodesPerRack,
+      List<DatanodeStorageInfo> results, boolean avoidStaleNodes,
+      EnumMap<StorageType, Integer> storageTypes)
+      throws NotEnoughReplicasException {
+    for (int i = 0; i < favoredNodes.size() && results.size() < numOfReplicas;
+        i++) {
+      DatanodeDescriptor favoredNode = favoredNodes.get(i);
+      // Choose a single node which is local to favoredNode.
+      // 'results' is updated within chooseLocalNode
+      final DatanodeStorageInfo target =
+          chooseLocalStorage(favoredNode, favoriteAndExcludedNodes, blocksize,
+            maxNodesPerRack, results, avoidStaleNodes, storageTypes, false);
+      if (target == null) {
+        LOG.warn("Could not find a target for file " + src
+            + " with favored node " + favoredNode);
+        continue;
+      }
+      favoriteAndExcludedNodes.add(target.getDatanodeDescriptor());
+    }
+  }
+
   /** This is the implementation. */
   private DatanodeStorageInfo[] chooseTarget(int numOfReplicas,
                                     Node writer,
@@ -192,14 +202,14 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
     }
       
     if (excludedNodes == null) {
-      excludedNodes = new HashSet<Node>();
+      excludedNodes = new HashSet<>();
     }
      
     int[] result = getMaxNodesPerRack(chosenStorage.size(), numOfReplicas);
     numOfReplicas = result[0];
     int maxNodesPerRack = result[1];
       
-    final List<DatanodeStorageInfo> results = new ArrayList<DatanodeStorageInfo>(chosenStorage);
+    final List<DatanodeStorageInfo> results = new ArrayList<>(chosenStorage);
     for (DatanodeStorageInfo storage : chosenStorage) {
       // add localMachine and related nodes to excludedNodes
       addToExcludedNodes(storage.getDatanodeDescriptor(), excludedNodes);
@@ -266,8 +276,7 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
 
   private EnumMap<StorageType, Integer> getRequiredStorageTypes(
       List<StorageType> types) {
-    EnumMap<StorageType, Integer> map = new EnumMap<StorageType,
-        Integer>(StorageType.class);
+    EnumMap<StorageType, Integer> map = new EnumMap<>(StorageType.class);
     for (StorageType type : types) {
       if (!map.containsKey(type)) {
         map.put(type, 1);
@@ -310,7 +319,7 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
     }
 
     // Keep a copy of original excludedNodes
-    final Set<Node> oldExcludedNodes = new HashSet<Node>(excludedNodes);
+    final Set<Node> oldExcludedNodes = new HashSet<>(excludedNodes);
 
     // choose storage types; use fallbacks for unavailable storages
     final List<StorageType> requiredStorageTypes = storagePolicy
@@ -860,29 +869,39 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
   }
 
   @Override
-  public BlockPlacementStatus verifyBlockPlacement(String srcPath,
-      LocatedBlock lBlk, int numberOfReplicas) {
-    DatanodeInfo[] locs = lBlk.getLocations();
+  public BlockPlacementStatus verifyBlockPlacement(DatanodeInfo[] locs,
+      int numberOfReplicas) {
     if (locs == null)
       locs = DatanodeDescriptor.EMPTY_ARRAY;
-    int numRacks = clusterMap.getNumOfRacks();
-    if(numRacks <= 1) // only one rack
-      return new BlockPlacementStatusDefault(
-          Math.min(numRacks, numberOfReplicas), numRacks);
-    int minRacks = Math.min(2, numberOfReplicas);
+    if (!clusterMap.hasClusterEverBeenMultiRack()) {
+      // only one rack
+      return new BlockPlacementStatusDefault(1, 1);
+    }
+    int minRacks = 2;
+    minRacks = Math.min(minRacks, numberOfReplicas);
     // 1. Check that all locations are different.
     // 2. Count locations on different racks.
-    Set<String> racks = new TreeSet<String>();
+    Set<String> racks = new TreeSet<>();
     for (DatanodeInfo dn : locs)
       racks.add(dn.getNetworkLocation());
     return new BlockPlacementStatusDefault(racks.size(), minRacks);
   }
-
-  @Override
-  public DatanodeStorageInfo chooseReplicaToDelete(BlockCollection bc,
-      Block block, short replicationFactor,
-      Collection<DatanodeStorageInfo> first,
-      Collection<DatanodeStorageInfo> second,
+  /**
+   * Decide whether deleting the specified replica of the block still makes
+   * the block conform to the configured block placement policy.
+   * @param moreThanOne The replica locations of this block that are present
+   *                    on more than one unique racks.
+   * @param exactlyOne Replica locations of this block that  are present
+   *                    on exactly one unique racks.
+   * @param excessTypes The excess {@link StorageType}s according to the
+   *                    {@link BlockStoragePolicy}.
+   *
+   * @return the replica that is the best candidate for deletion
+   */
+  @VisibleForTesting
+  public DatanodeStorageInfo chooseReplicaToDelete(
+      Collection<DatanodeStorageInfo> moreThanOne,
+      Collection<DatanodeStorageInfo> exactlyOne,
       final List<StorageType> excessTypes) {
     long oldestHeartbeat =
       monotonicNow() - heartbeatInterval * tolerateHeartbeatMultiplier;
@@ -892,7 +911,8 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
 
     // Pick the node with the oldest heartbeat or with the least free space,
     // if all hearbeats are within the tolerable heartbeat interval
-    for(DatanodeStorageInfo storage : pickupReplicaSet(first, second)) {
+    for(DatanodeStorageInfo storage : pickupReplicaSet(moreThanOne,
+        exactlyOne)) {
       if (!excessTypes.contains(storage.getStorageType())) {
         continue;
       }
@@ -922,6 +942,94 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
     return storage;
   }
 
+  @Override
+  public List<DatanodeStorageInfo> chooseReplicasToDelete(
+      Collection<DatanodeStorageInfo> candidates,
+      int expectedNumOfReplicas,
+      List<StorageType> excessTypes,
+      DatanodeDescriptor addedNode,
+      DatanodeDescriptor delNodeHint) {
+
+    List<DatanodeStorageInfo> excessReplicas = new ArrayList<>();
+
+    final Map<String, List<DatanodeStorageInfo>> rackMap = new HashMap<>();
+
+    final List<DatanodeStorageInfo> moreThanOne = new ArrayList<>();
+    final List<DatanodeStorageInfo> exactlyOne = new ArrayList<>();
+
+    // split nodes into two sets
+    // moreThanOne contains nodes on rack with more than one replica
+    // exactlyOne contains the remaining nodes
+    splitNodesWithRack(candidates, rackMap, moreThanOne, exactlyOne);
+
+    // pick one node to delete that favors the delete hint
+    // otherwise pick one with least space from priSet if it is not empty
+    // otherwise one node with least space from remains
+    boolean firstOne = true;
+    final DatanodeStorageInfo delNodeHintStorage =
+        DatanodeStorageInfo.getDatanodeStorageInfo(candidates, delNodeHint);
+    final DatanodeStorageInfo addedNodeStorage =
+        DatanodeStorageInfo.getDatanodeStorageInfo(candidates, addedNode);
+
+    while (candidates.size() - expectedNumOfReplicas > excessReplicas.size()) {
+      final DatanodeStorageInfo cur;
+      if (firstOne && useDelHint(delNodeHintStorage, addedNodeStorage,
+          moreThanOne, exactlyOne, excessTypes)) {
+        cur = delNodeHintStorage;
+      } else { // regular excessive replica removal
+        cur = chooseReplicaToDelete(moreThanOne, exactlyOne, excessTypes);
+      }
+      firstOne = false;
+      if (cur == null) {
+        LOG.warn("No excess replica can be found. excessTypes: {}." +
+            " moreThanOne: {}. exactlyOne: {}.", excessTypes, moreThanOne,
+            exactlyOne);
+        break;
+      }
+
+      // adjust rackmap, moreThanOne, and exactlyOne
+      adjustSetsWithChosenReplica(rackMap, moreThanOne, exactlyOne, cur);
+      excessReplicas.add(cur);
+    }
+    return excessReplicas;
+  }
+
+  /** Check if we can use delHint. */
+  @VisibleForTesting
+  boolean useDelHint(DatanodeStorageInfo delHint,
+      DatanodeStorageInfo added, List<DatanodeStorageInfo> moreThanOne,
+      Collection<DatanodeStorageInfo> exactlyOne,
+      List<StorageType> excessTypes) {
+    if (delHint == null) {
+      return false; // no delHint
+    } else if (!excessTypes.contains(delHint.getStorageType())) {
+      return false; // delHint storage type is not an excess type
+    } else {
+      // check if removing delHint reduces the number of racks
+      return notReduceNumOfGroups(moreThanOne, delHint, added);
+    }
+  }
+
+  // Check if moving from source to target will reduce the number of
+  // groups. The groups could be based on racks or upgrade domains.
+  <T> boolean notReduceNumOfGroups(List<T> moreThanOne, T source, T target) {
+    if (moreThanOne.contains(source)) {
+      return true; // source and some other nodes are under the same group.
+    } else if (target != null && !moreThanOne.contains(target)) {
+      return true; // the added node adds a new group.
+    }
+    return false; // removing delHint reduces the number of groups.
+  }
+
+  @Override
+  public boolean isMovable(Collection<DatanodeInfo> locs,
+      DatanodeInfo source, DatanodeInfo target) {
+    final Map<String, List<DatanodeInfo>> rackMap = new HashMap<>();
+    final List<DatanodeInfo> moreThanOne = new ArrayList<>();
+    final List<DatanodeInfo> exactlyOne = new ArrayList<>();
+    splitNodesWithRack(locs, rackMap, moreThanOne, exactlyOne);
+    return notReduceNumOfGroups(moreThanOne, source, target);
+  }
   /**
    * Pick up replica node set for deleting replica as over-replicated. 
    * First set contains replica nodes on rack with more than one
@@ -929,11 +1037,11 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
    * So pick up first set if not empty. If first is empty, then pick second.
    */
   protected Collection<DatanodeStorageInfo> pickupReplicaSet(
-      Collection<DatanodeStorageInfo> first,
-      Collection<DatanodeStorageInfo> second) {
-    return first.isEmpty() ? second : first;
+      Collection<DatanodeStorageInfo> moreThanOne,
+      Collection<DatanodeStorageInfo> exactlyOne) {
+    return moreThanOne.isEmpty() ? exactlyOne : moreThanOne;
   }
-  
+
   @VisibleForTesting
   void setPreferLocalNode(boolean prefer) {
     this.preferLocalNode = prefer;

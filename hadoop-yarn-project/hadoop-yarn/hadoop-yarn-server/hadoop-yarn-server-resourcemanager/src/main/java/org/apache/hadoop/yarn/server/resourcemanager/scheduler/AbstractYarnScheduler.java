@@ -604,6 +604,7 @@ public abstract class AbstractYarnScheduler
       SchedContainerChangeRequest decreaseRequest,
       SchedulerApplicationAttempt attempt);
 
+  @Override
   public SchedulerNode getSchedulerNode(NodeId nodeId) {
     return nodes.get(nodeId);
   }
@@ -650,7 +651,9 @@ public abstract class AbstractYarnScheduler
       this.rmContext
           .getDispatcher()
           .getEventHandler()
-          .handle(new RMAppEvent(app.getApplicationId(), RMAppEventType.KILL));
+          .handle(new RMAppEvent(app.getApplicationId(), RMAppEventType.KILL,
+          "Application killed due to expiry of reservation queue " +
+          queueName + "."));
     }
   }
   

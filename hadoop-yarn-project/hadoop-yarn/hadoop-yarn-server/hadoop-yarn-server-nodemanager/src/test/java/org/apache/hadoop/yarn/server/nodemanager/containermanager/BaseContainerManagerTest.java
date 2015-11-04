@@ -22,19 +22,20 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import org.apache.hadoop.yarn.server.nodemanager.executor.DeletionAsUserContext;
 import org.junit.Assert;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileContext;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.UnsupportedFileSystemException;
+import org.apache.hadoop.net.ServerSocketUtil;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.SecretManager.InvalidToken;
 import org.apache.hadoop.yarn.api.ContainerManagementProtocol;
@@ -72,6 +73,8 @@ import org.apache.hadoop.yarn.server.nodemanager.security.NMTokenSecretManagerIn
 import org.apache.hadoop.yarn.server.security.ApplicationACLsManager;
 import org.junit.After;
 import org.junit.Before;
+
+import static org.mockito.Mockito.spy;
 
 public abstract class BaseContainerManagerTest {
 
@@ -148,7 +151,7 @@ public abstract class BaseContainerManagerTest {
   protected ContainerExecutor createContainerExecutor() {
     DefaultContainerExecutor exec = new DefaultContainerExecutor();
     exec.setConf(conf);
-    return exec;
+    return spy(exec);
   }
 
   @Before
@@ -164,7 +167,7 @@ public abstract class BaseContainerManagerTest {
     LOG.info("Created localDir in " + localDir.getAbsolutePath());
     LOG.info("Created tmpDir in " + tmpDir.getAbsolutePath());
 
-    String bindAddress = "0.0.0.0:12345";
+    String bindAddress = "0.0.0.0:" + ServerSocketUtil.getPort(49162, 10);
     conf.set(YarnConfiguration.NM_ADDRESS, bindAddress);
     conf.set(YarnConfiguration.NM_LOCAL_DIRS, localDir.getAbsolutePath());
     conf.set(YarnConfiguration.NM_LOG_DIRS, localLogDir.getAbsolutePath());
@@ -246,7 +249,7 @@ public abstract class BaseContainerManagerTest {
       public void delete(String user, Path subDir, Path... baseDirs) {
         // Don't do any deletions.
         LOG.info("Psuedo delete: user - " + user + ", subDir - " + subDir
-            + ", baseDirs - " + baseDirs); 
+            + ", baseDirs - " + Arrays.asList(baseDirs));
       };
     };
   }

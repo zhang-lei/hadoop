@@ -32,6 +32,9 @@ Trunk (Unreleased)
     HADOOP-11356. Removed deprecated o.a.h.fs.permission.AccessControlException.
     (Li Lu via wheat9)
 
+    HADOOP-10787 Rename/remove non-HADOOP_*, etc from the shell scripts.
+    (aw via vvasudev)
+
   NEW FEATURES
 
     HADOOP-6590. Add a username check for hadoop sub-commands (John Smith via
@@ -55,6 +58,8 @@ Trunk (Unreleased)
     scripts (Kengo Seki via aw)
 
     HADOOP-10854. unit tests for the shell scripts (aw)
+
+    HADOOP-10949. metrics2 sink plugin for Apache Kafka (Babak Behzad via aw)
 
   IMPROVEMENTS
 
@@ -240,6 +245,16 @@ Trunk (Unreleased)
     HADOOP-10979. Auto-entries in hadoop_usage (aw)
 
     HADOOP-12249. pull argument parsing into a function (aw)
+
+    HADOOP-12436. GlobPattern regex library has performance issues with
+    wildcard characters (Matthew Paduano via aw)
+
+    HADOOP-12385. Include nested stack trace in SaslRpcClient.getServerToken()
+    (stevel)
+
+    HADOOP-12133. Add schemas to Maven Assembly XMLs (Gábor Lipták via aw)
+
+    HADOOP-12541. make re2j dependency consistent (Matthew Paduano via aw)
 
   BUG FIXES
 
@@ -505,11 +520,104 @@ Trunk (Unreleased)
     HADOOP-11942. Add links to SLGUserGuide to site index.
     (Masatake Iwasaki via xyao)
 
+    HADOOP-12364. Deleting pid file after stop is causing the daemons to
+    keep restarting (Siqi Li via aw)
+
+    HADOOP-12515. Mockito dependency is missing in hadoop-kafka module.
+    (Kai Zheng via aajisaka)
+
+    HADOOP-12494. fetchdt stores the token based on token kind instead
+    of token service (HeeSoo Kim via aw)
+
   OPTIMIZATIONS
 
     HADOOP-7761. Improve the performance of raw comparisons. (todd)
 
     HADOOP-8589. ViewFs tests fail when tests and home dirs are nested (sanjay Radia)
+
+    BREAKDOWN OF HADOOP-11264 SUBTASKS AND RELATED JIRAS (Common part of HDFS-7285)
+
+      HADOOP-11514. Raw Erasure Coder API for concrete encoding and decoding
+      (Kai Zheng via umamahesh)
+
+      HADOOP-11534. Minor improvements for raw erasure coders
+      ( Kai Zheng via vinayakumarb )
+
+      HADOOP-11541. Raw XOR coder
+      ( Kai Zheng )
+
+      HADOOP-11542. Raw Reed-Solomon coder in pure Java. Contributed by Kai Zheng
+      ( Kai Zheng )
+
+      HADOOP-11643. Define EC schema API for ErasureCodec. Contributed by Kai Zheng
+      ( Kai Zheng )
+
+      HADOOP-11646. Erasure Coder API for encoding and decoding of block group
+      ( Kai Zheng via vinayakumarb )
+
+      HADOOP-11705. Make erasure coder configurable. Contributed by Kai Zheng
+      ( Kai Zheng )
+
+      HADOOP-11706. Refine a little bit erasure coder API. Contributed by Kai Zheng
+      ( Kai Zheng )
+
+      HADOOP-11707. Add factory to create raw erasure coder. Contributed by Kai Zheng
+      ( Kai Zheng )
+
+      HADOOP-11647. Reed-Solomon ErasureCoder. Contributed by Kai Zheng
+      ( Kai Zheng )
+
+      HADOOP-11782 Correct two thrown messages in ECSchema class. Contributed by Xinwei Qin
+      ( Xinwei Qin via Kai Zheng )
+
+      HADOOP-11740. Combine erasure encoder and decoder interfaces (Zhe Zhang)
+
+      HADOOP-11805 Better to rename some raw erasure coders. Contributed by Kai Zheng
+      ( Kai Zheng )
+
+      HADOOP-11645. Erasure Codec API covering the essential aspects for an erasure code
+      ( Kai Zheng via vinayakumarb )
+
+      HADOOP-11818. Minor improvements for erasurecode classes. (Rakesh R via Kai Zheng)
+
+      HADOOP-11841. Remove unused ecschema-def.xml files.  (szetszwo)
+
+      HADOOP-11921. Enhance tests for erasure coders. (Kai Zheng via Zhe Zhang)
+
+      HADOOP-11920. Refactor some codes for erasure coders. (Kai Zheng via Zhe Zhang)
+
+      HADOOP-11566. Add tests and fix for erasure coders to recover erased parity
+      units. (Kai Zheng via Zhe Zhang)
+
+      HADOOP-11938. Enhance ByteBuffer version encode/decode API of raw erasure
+      coder. (Kai Zheng via Zhe Zhang)
+
+      HADOOP-12013. Generate fixed data to perform erasure coder test. (Kai Zheng)
+
+      HADOOP-12029. Remove chunkSize from ECSchema as its not required for coders
+      (vinayakumarb)
+
+      HADOOP-11847. Enhance raw coder allowing to read least required inputs in decoding.
+      (Kai Zheng)
+
+      HADOOP-12011. Allow to dump verbose information to ease debugging in raw erasure coders
+      (Kai Zheng)
+
+      HADOOP-12065. Using more meaningful keys in EC schema. (Kai Zheng)
+
+      HADOOP-12060. Fix ByteBuffer usage for raw erasure coders. (Kai Zheng via
+      jing9)
+
+      HADOOP-11921. Enhance tests for erasure coders. (Kai Zheng)
+
+      HADOOP-12327. Initialize output buffers with ZERO bytes in erasure coder.
+      (Kai Zheng via waltersu4549)
+
+      HADOOP-12047. Indicate preference not to affect input buffers during
+      coding in erasure coder. (Kai Zheng via waltersu4549)
+
+      HADOOP-12544. Erasure Coding: create dummy raw coder to isolate performance
+      issues in testing. (Rui Li via zhz)
 
 Release 2.8.0 - UNRELEASED
 
@@ -544,7 +652,14 @@ Release 2.8.0 - UNRELEASED
 
     HADOOP-12360. Create StatsD metrics2 sink. (Dave Marion via stevel)
 
+    HADOOP-10300. Allowed deferred sending of call responses. (Daryn Sharp via
+    yliu)
+
   IMPROVEMENTS
+
+    HADOOP-12458. Retries is typoed to spell Retires in parts of
+    hadoop-yarn and hadoop-common
+    (Neelesh Srinivas Salian via harsh)
 
     HADOOP-12271. Hadoop Jar Error Should Be More Explanatory
     (Josh Elser via harsh)
@@ -789,6 +904,50 @@ Release 2.8.0 - UNRELEASED
 
     HADOOP-12446. Undeprecate createNonRecursive() (Ted Yu via kihwal)
 
+    HADOOP-12452. Fix tracing documention reflecting the update to htrace-4
+    (Masatake Iwasaki via Colin P. McCabe)
+
+    HADOOP-12350. WASB Logging: Improve WASB Logging around deletes, reads and
+    writes (Dushyanth via cnauroth)
+
+    HADOOP-11104. org.apache.hadoop.metrics2.lib.MetricsRegistry needs numerical
+    parameter checking. (Ray Chiang via aajisaka)
+
+    HADOOP-12344. Improve validateSocketPathSecurity0 error message (Casey
+    Brotherton via Colin P. McCabe)
+
+    HADOOP-10775. Shell operations to fail with meaningful errors on windows if
+    winutils.exe not found. (stevel)
+
+    HADOOP-12481. JWTRedirectAuthenticationHandler doesn't Retain Original Query
+    String (Larry McCay via cnauroth)
+
+    HADOOP-12460. Add overwrite option for 'get' shell command
+    (Jagadesh Kiran N via vinayakumarb)
+
+    HADOOP-10406. TestIPC.testIpcWithReaderQueuing may fail. (Xiao Chen via wang)
+
+    HADOOP-9692. Improving log message when SequenceFile reader throws
+    EOFException on zero-length file. (Zhe Zhang and Chu Tong via ozawa)
+
+    HADOOP-7266. Deprecate metrics v1. (Akira AJISAKA via ozawa)
+
+    HADOOP-12472. Make GenericTestUtils.assertExceptionContains robust.
+    (Steve Loughran via jing9)
+
+    HADOOP-12514. Make static fields in GenericTestUtils for
+    assertExceptionContains() package-private and final.
+    (Mingliang Liu via stevel)
+
+    HADOOP-12520. Use XInclude in hadoop-azure test configuration to isolate
+    Azure Storage account keys for service integration tests. (cnauroth)
+
+    HADOOP-11685. StorageException complaining " no lease ID" during HBase
+    distributed log splitting (Duo Xu via cnauroth)
+
+    HADOOP-12040. Adjust inputs order for the decode API in raw erasure coder.
+    (Kai Zheng via yliu)
+
   OPTIMIZATIONS
 
     HADOOP-11785. Reduce the number of listStatus operation in distcp
@@ -826,6 +985,9 @@ Release 2.8.0 - UNRELEASED
 
     HADOOP-11984. Enable parallel JUnit tests in pre-commit.
     (Chris Nauroth via vinayakumarb)
+
+    HADOOP-12450. UserGroupInformation should not log at WARN level if no groups
+    are found. (Elliott Clark via stevel)
 
   BUG FIXES
 
@@ -1103,6 +1265,65 @@ Release 2.8.0 - UNRELEASED
     HADOOP-12448. TestTextCommand: use mkdirs rather than mkdir to create test
     directory. (Contributed by Colin Patrick McCabe and Chris Nauroth)
 
+    HADOOP-10296. Incorrect null check in SwiftRestClient#buildException().
+    (Rahul Palamuttam and Kanaka Kumar Avvaru via aajisaka)
+
+    HADOOP-8437. getLocalPathForWrite should throw IOException for invalid
+    paths. (Brahma Reddy Battula via zxu)
+
+    HADOOP-11098. [JDK8] Max Non Heap Memory default changed between JDK7
+    and 8. (ozawa)
+
+    HADOOP-12284. UserGroupInformation doAs can throw misleading exception
+    (Aaron Dosset via stevel)
+
+    HADOOP-12449. TestDNS and TestNetUtils failing if no network. (stevel)
+
+    HADOOP-11515. Upgrade jsch lib to jsch-0.1.51 to avoid problems running
+    on java7. (stevel and ozawa)
+
+    HADOOP-12478. Shell.getWinUtilsPath() has been renamed
+    Shell.getWinutilsPath(). (stevel)
+
+    HADOOP-12475. Replace guava Cache with ConcurrentHashMap for caching
+    Connection in ipc Client (Walter Su via sjlee)
+
+    HADOOP-12479. ProtocMojo does not log the reason for a protoc compilation
+    failure. (cnauroth)
+
+    HADOOP-11628. SPNEGO auth does not work with CNAMEs in JDK8.
+    (Daryn Sharp via stevel).
+
+    HADOOP-10941. Proxy user verification NPEs if remote host is unresolvable.
+    (Benoy Antony via stevel).
+
+    HADOOP-12483. Maintain wrapped SASL ordering for postponed IPC responses.
+    (Daryn Sharp via yliu)
+
+    HADOOP-12513. Dockerfile lacks initial 'apt-get update'.
+    (Akihiro Suda via ozawa)
+
+    HADOOP-12457. [JDK8] Fix a failure of compiling common by javadoc.
+    (Akira AJISAKA via ozawa)
+
+    HADOOP-12178. NPE during handling of SASL setup if problem with SASL
+    resolver class. (Steve Loughran via zxu)
+
+    HADOOP-12519. hadoop-azure tests should avoid creating a metrics
+    configuration file in the module root directory. (cnauroth)
+
+    HADOOP-12533. Introduce FileNotFoundException in WASB for read and seek API.
+    (Dushyanth via cnauroth)
+
+    HADOOP-12508. delete fails with exception when lease is held on blob.
+    (Gaurav Kanade via cnauroth)
+
+    HADOOP-12542. TestDNS fails on Windows after HADOOP-12437. (cnauroth)
+
+    HADOOP-12540. TestAzureFileSystemInstrumentation#testClientErrorMetrics
+    fails intermittently due to assumption that a lease error will be thrown.
+    (Gaurav Kanade via cnauroth)
+
   OPTIMIZATIONS
 
     HADOOP-12051. ProtobufRpcEngine.invoke() should use Exception.toString()
@@ -1172,6 +1393,36 @@ Release 2.8.0 - UNRELEASED
     HADOOP-12442. Display help if the command option to 'hdfs dfs' is not valid
     (nijel via vinayakumarb)
 
+    HADOOP-12441. Fixed shell-kill command behaviour to work correctly on some
+    Linux distributions after HADOOP-12317. (Wangda Tan via vinodkv)
+
+    HADOOP-12474. MiniKMS should use random ports for Jetty server by default.
+    (Mingliang Liu via wheat9)
+
+    HADOOP-12418. TestRPC.testRPCInterruptedSimple fails intermittently.
+    (kihwal)
+
+    HADOOP-12334. Change Mode Of Copy Operation of HBase WAL Archiving to bypass
+    Azure Storage Throttling after retries. (Gaurav Kanade via cnauroth)
+
+    HADOOP-12484. Single File Rename Throws Incorrectly In Potential Race
+    Condition Scenarios. (Gaurav Kanade via cnauroth)
+
+Release 2.7.3 - UNRELEASED
+
+  INCOMPATIBLE CHANGES
+
+  NEW FEATURES
+
+  IMPROVEMENTS
+
+  OPTIMIZATIONS
+
+  BUG FIXES
+
+    HADOOP-12296. when setnetgrent returns 0 in linux, exception should be
+    thrown (Chang Li via jlowe)
+
 Release 2.7.2 - UNRELEASED
 
   INCOMPATIBLE CHANGES
@@ -1209,6 +1460,11 @@ Release 2.7.2 - UNRELEASED
 
     HADOOP-12213. Interrupted exception can occur when Client#stop is called.
     (Kuhu Shukla via ozawa)
+
+    HADOOP-12465. Incorrect javadoc in WritableUtils.java.
+    (Jagadesh Kiran N via aajisaka)
+
+    HADOOP-12464. Interrupted client may try to fail-over and retry (kihwal)
 
 Release 2.7.1 - 2015-07-06 
 
@@ -1940,7 +2196,19 @@ Release 2.7.0 - 2015-04-20
     HADOOP-11837. AuthenticationFilter should destroy SignerSecretProvider in
     Tomcat deployments. (Bowen Zhang via wheat9)
 
-Release 2.6.2 - UNRELEASED
+Release 2.6.3 - UNRELEASED
+
+  INCOMPATIBLE CHANGES
+
+  NEW FEATURES
+
+  IMPROVEMENTS
+
+  OPTIMIZATIONS
+
+  BUG FIXES
+
+Release 2.6.2 - 2015-10-28
 
   INCOMPATIBLE CHANGES
 

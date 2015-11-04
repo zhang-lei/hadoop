@@ -17,6 +17,7 @@
  */
 package org.apache.hadoop.io.erasurecode.rawcoder;
 
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configurable;
 
 /**
@@ -33,7 +34,22 @@ import org.apache.hadoop.conf.Configurable;
  * low level constructs, since it only takes care of the math calculation with
  * a group of byte buffers.
  */
+@InterfaceAudience.Private
 public interface RawErasureCoder extends Configurable {
+
+  /**
+   * Get a coder option value.
+   * @param option
+   * @return
+   */
+  public Object getCoderOption(CoderOption option);
+
+  /**
+   * Set a coder option value.
+   * @param option
+   * @param value
+   */
+  public void setCoderOption(CoderOption option, Object value);
 
   /**
    * The number of data input units for the coding. A unit can be a byte,
@@ -48,15 +64,6 @@ public interface RawErasureCoder extends Configurable {
    * @return count of parity output units
    */
   public int getNumParityUnits();
-
-  /**
-   * Tell if direct buffer is preferred or not. It's for callers to
-   * decide how to allocate coding chunk buffers, using DirectByteBuffer or
-   * bytes array. It will return false by default.
-   * @return true if native buffer is preferred for performance consideration,
-   * otherwise false.
-   */
-  public boolean preferDirectBuffer();
 
   /**
    * Should be called when release this coder. Good chance to release encoding

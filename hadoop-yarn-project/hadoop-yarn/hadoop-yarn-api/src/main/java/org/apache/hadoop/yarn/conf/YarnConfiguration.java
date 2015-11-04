@@ -153,9 +153,9 @@ public class YarnConfiguration extends Configuration {
   public static final int DEFAULT_RM_AMLAUNCHER_THREAD_COUNT = 50;
 
   /** Retry times to connect with NM.*/
-  public static final String RM_NODEMANAGER_CONNECT_RETIRES =
+  public static final String RM_NODEMANAGER_CONNECT_RETRIES =
       RM_PREFIX + "nodemanager-connect-retries";
-  public static final int DEFAULT_RM_NODEMANAGER_CONNECT_RETIRES = 10;
+  public static final int DEFAULT_RM_NODEMANAGER_CONNECT_RETRIES = 10;
 
   /** The Kerberos principal for the resource manager.*/
   public static final String RM_PRINCIPAL =
@@ -336,6 +336,11 @@ public class YarnConfiguration extends Configuration {
       + "webapp.delegation-token-auth-filter.enabled";
   public static final boolean DEFAULT_RM_WEBAPP_DELEGATION_TOKEN_AUTH_FILTER =
       true;
+
+  /** Enable cross origin (CORS) support. **/
+  public static final String RM_WEBAPP_ENABLE_CORS_FILTER =
+      RM_PREFIX + "webapp.cross-origin.enabled";
+  public static final boolean DEFAULT_RM_WEBAPP_ENABLE_CORS_FILTER = false;
 
   /** How long to wait until a container is considered dead.*/
   public static final String RM_CONTAINER_ALLOC_EXPIRY_INTERVAL_MS = 
@@ -530,6 +535,10 @@ public class YarnConfiguration extends Configuration {
       CLIENT_FAILOVER_PREFIX + "retries-on-socket-timeouts";
   public static final int
       DEFAULT_CLIENT_FAILOVER_RETRIES_ON_SOCKET_TIMEOUTS = 0;
+
+  /** number of zookeeper operation retry times in ActiveStandbyElector */
+  public static final String RM_HA_FC_ELECTOR_ZK_RETRIES_KEY = RM_HA_PREFIX
+      + "failover-controller.active-standby-elector.zk.retries";
 
   ////////////////////////////////
   // RM state store configs
@@ -970,6 +979,11 @@ public class YarnConfiguration extends Configuration {
   public static final String DEFAULT_NM_WEBAPP_HTTPS_ADDRESS = "0.0.0.0:"
       + DEFAULT_NM_WEBAPP_HTTPS_PORT; 
 
+  /** Enable/disable CORS filter. */
+  public static final String NM_WEBAPP_ENABLE_CORS_FILTER =
+      NM_PREFIX + "webapp.cross-origin.enabled";
+  public static final boolean DEFAULT_NM_WEBAPP_ENABLE_CORS_FILTER = false;
+
   /** How often to monitor resource in a node.*/
   public static final String NM_RESOURCE_MON_INTERVAL_MS =
       NM_PREFIX + "resource-monitor.interval-ms";
@@ -1008,7 +1022,15 @@ public class YarnConfiguration extends Configuration {
       NM_PREFIX + "container-metrics.period-ms";
   @Private
   public static final int DEFAULT_NM_CONTAINER_METRICS_PERIOD_MS = -1;
-  
+
+  /** The delay time ms to unregister container metrics after completion. */
+  @Private
+  public static final String NM_CONTAINER_METRICS_UNREGISTER_DELAY_MS =
+      NM_PREFIX + "container-metrics.unregister-delay-ms";
+  @Private
+  public static final int DEFAULT_NM_CONTAINER_METRICS_UNREGISTER_DELAY_MS =
+      10000;
+
   /** Prefix for all node manager disk health checker configs. */
   private static final String NM_DISK_HEALTH_CHECK_PREFIX =
       "yarn.nodemanager.disk-health-checker.";
@@ -1050,6 +1072,18 @@ public class YarnConfiguration extends Configuration {
    */
   public static final float DEFAULT_NM_MAX_PER_DISK_UTILIZATION_PERCENTAGE =
       90.0F;
+
+  /**
+   * The low threshold percentage of disk space used when an offline disk is
+   * marked as online. Values can range from 0.0 to 100.0. The value shouldn't
+   * be more than NM_MAX_PER_DISK_UTILIZATION_PERCENTAGE. If its value is
+   * more than NM_MAX_PER_DISK_UTILIZATION_PERCENTAGE or not set, it will be
+   * set to the same value as NM_MAX_PER_DISK_UTILIZATION_PERCENTAGE.
+   * This applies to nm-local-dirs and nm-log-dirs.
+   */
+  public static final String NM_WM_LOW_PER_DISK_UTILIZATION_PERCENTAGE =
+      NM_DISK_HEALTH_CHECK_PREFIX +
+      "disk-utilization-watermark-low-per-disk-percentage";
 
   /**
    * The minimum space that must be available on a local dir for it to be used.
@@ -1099,6 +1133,51 @@ public class YarnConfiguration extends Configuration {
   /** The default docker executor (For DockerContainerExecutor).*/
   public static final String NM_DEFAULT_DOCKER_CONTAINER_EXECUTOR_EXEC_NAME =
           "/usr/bin/docker";
+
+  /** Prefix for runtime configuration constants. */
+  public static final String LINUX_CONTAINER_RUNTIME_PREFIX = NM_PREFIX +
+      "runtime.linux.";
+  public static final String DOCKER_CONTAINER_RUNTIME_PREFIX =
+      LINUX_CONTAINER_RUNTIME_PREFIX + "docker.";
+
+  /** Capabilities allowed (and added by default) for docker containers. **/
+  public static final String NM_DOCKER_CONTAINER_CAPABILITIES =
+      DOCKER_CONTAINER_RUNTIME_PREFIX + "capabilities";
+
+  /** These are the default capabilities added by docker. We'll use the same
+   * set here. While these may not be case-sensitive from a docker
+   * perspective, it is best to keep these uppercase.
+   */
+  public static final String[] DEFAULT_NM_DOCKER_CONTAINER_CAPABILITIES = {
+      "CHOWN",
+      "DAC_OVERRIDE",
+      "FSETID",
+      "FOWNER",
+      "MKNOD",
+      "NET_RAW",
+      "SETGID",
+      "SETUID",
+      "SETFCAP",
+      "SETPCAP",
+      "NET_BIND_SERVICE",
+      "SYS_CHROOT",
+      "KILL",
+      "AUDIT_WRITE" };
+
+  /** Allow privileged containers. Use with extreme care. */
+  public static final String NM_DOCKER_ALLOW_PRIVILEGED_CONTAINERS =
+      DOCKER_CONTAINER_RUNTIME_PREFIX + "privileged-containers.allowed";
+
+  /** Privileged containers are disabled by default. */
+  public static final boolean DEFAULT_NM_DOCKER_ALLOW_PRIVILEGED_CONTAINERS =
+      false;
+
+  /** ACL list for users allowed to run privileged containers. */
+  public static final String NM_DOCKER_PRIVILEGED_CONTAINERS_ACL =
+      DOCKER_CONTAINER_RUNTIME_PREFIX + "privileged-containers.acl";
+
+  /** Default list for users allowed to run privileged containers is empty. */
+  public static final String DEFAULT_NM_DOCKER_PRIVILEGED_CONTAINERS_ACL = "";
 
   /** The path to the Linux container executor.*/
   public static final String NM_LINUX_CONTAINER_EXECUTOR_PATH =
@@ -1459,6 +1538,23 @@ public class YarnConfiguration extends Configuration {
   public static final String TIMELINE_SERVICE_PREFIX =
       YARN_PREFIX + "timeline-service.";
 
+  /**
+   * Comma seperated list of names for UIs hosted in the timeline server
+   * (For pluggable UIs).
+   */
+  public static final String TIMELINE_SERVICE_UI_NAMES =
+      TIMELINE_SERVICE_PREFIX + "ui-names";
+
+  /** Relative web path that will serve up this UI (For pluggable UIs). */
+  public static final String TIMELINE_SERVICE_UI_WEB_PATH_PREFIX =
+      TIMELINE_SERVICE_PREFIX + "ui-web-path.";
+
+  /**
+   * Path to war file or static content directory for this UI
+   * (For pluggable UIs).
+   */
+  public static final String TIMELINE_SERVICE_UI_ON_DISK_PATH_PREFIX =
+      TIMELINE_SERVICE_PREFIX + "ui-on-disk-path.";
 
   // mark app-history related configs @Private as application history is going
   // to be integrated into the timeline service
@@ -1979,14 +2075,17 @@ public class YarnConfiguration extends Configuration {
   public static final String NODELABEL_CONFIGURATION_TYPE =
       NODE_LABELS_PREFIX + "configuration-type";
   
-  public static final String CENTALIZED_NODELABEL_CONFIGURATION_TYPE =
+  public static final String CENTRALIZED_NODELABEL_CONFIGURATION_TYPE =
       "centralized";
-  
+
+  public static final String DELEGATED_CENTALIZED_NODELABEL_CONFIGURATION_TYPE =
+      "delegated-centralized";
+
   public static final String DISTRIBUTED_NODELABEL_CONFIGURATION_TYPE =
       "distributed";
   
   public static final String DEFAULT_NODELABEL_CONFIGURATION_TYPE =
-      CENTALIZED_NODELABEL_CONFIGURATION_TYPE;
+      CENTRALIZED_NODELABEL_CONFIGURATION_TYPE;
 
   public static final String MAX_CLUSTER_LEVEL_APPLICATION_PRIORITY =
       YARN_PREFIX + "cluster.max-application-priority";
@@ -1999,6 +2098,26 @@ public class YarnConfiguration extends Configuration {
         NODELABEL_CONFIGURATION_TYPE, DEFAULT_NODELABEL_CONFIGURATION_TYPE));
   }
 
+  @Private
+  public static boolean isCentralizedNodeLabelConfiguration(
+      Configuration conf) {
+    return CENTRALIZED_NODELABEL_CONFIGURATION_TYPE.equals(conf.get(
+        NODELABEL_CONFIGURATION_TYPE, DEFAULT_NODELABEL_CONFIGURATION_TYPE));
+  }
+
+  @Private
+  public static boolean isDelegatedCentralizedNodeLabelConfiguration(
+      Configuration conf) {
+    return DELEGATED_CENTALIZED_NODELABEL_CONFIGURATION_TYPE.equals(conf.get(
+        NODELABEL_CONFIGURATION_TYPE, DEFAULT_NODELABEL_CONFIGURATION_TYPE));
+  }
+
+  @Private
+  public static boolean areNodeLabelsEnabled(
+      Configuration conf) {
+    return conf.getBoolean(NODE_LABELS_ENABLED, DEFAULT_NODE_LABELS_ENABLED);
+  }
+
   private static final String NM_NODE_LABELS_PREFIX = NM_PREFIX
       + "node-labels.";
 
@@ -2007,9 +2126,16 @@ public class YarnConfiguration extends Configuration {
 
   // whitelist names for the yarn.nodemanager.node-labels.provider
   public static final String CONFIG_NODE_LABELS_PROVIDER = "config";
+  public static final String SCRIPT_NODE_LABELS_PROVIDER = "script";
 
   private static final String NM_NODE_LABELS_PROVIDER_PREFIX =
       NM_NODE_LABELS_PREFIX + "provider.";
+
+  public static final String NM_NODE_LABELS_RESYNC_INTERVAL =
+      NM_NODE_LABELS_PREFIX + "resync-interval-ms";
+
+  public static final long DEFAULT_NM_NODE_LABELS_RESYNC_INTERVAL =
+      2 * 60 * 1000;
 
   // If -1 is configured then no timer task should be created
   public static final String NM_NODE_LABELS_PROVIDER_FETCH_INTERVAL_MS =
@@ -2026,8 +2152,25 @@ public class YarnConfiguration extends Configuration {
   public static final long DEFAULT_NM_NODE_LABELS_PROVIDER_FETCH_TIMEOUT_MS =
       DEFAULT_NM_NODE_LABELS_PROVIDER_FETCH_INTERVAL_MS * 2;
 
-  public static final String NM_PROVIDER_CONFIGURED_NODE_LABELS =
-      NM_NODE_LABELS_PROVIDER_PREFIX + "configured-node-labels";
+  public static final String NM_PROVIDER_CONFIGURED_NODE_PARTITION =
+      NM_NODE_LABELS_PROVIDER_PREFIX + "configured-node-partition";
+
+  private static final String RM_NODE_LABELS_PREFIX = RM_PREFIX
+      + "node-labels.";
+
+  public static final String RM_NODE_LABELS_PROVIDER_CONFIG =
+      RM_NODE_LABELS_PREFIX + "provider";
+
+  private static final String RM_NODE_LABELS_PROVIDER_PREFIX =
+      RM_NODE_LABELS_PREFIX + "provider.";
+
+  //If -1 is configured then no timer task should be created
+  public static final String RM_NODE_LABELS_PROVIDER_FETCH_INTERVAL_MS =
+      RM_NODE_LABELS_PROVIDER_PREFIX + "fetch-interval-ms";
+
+  //once in 30 mins
+  public static final long DEFAULT_RM_NODE_LABELS_PROVIDER_FETCH_INTERVAL_MS =
+      30 * 60 * 1000;
 
   public static final String AM_BLACKLISTING_ENABLED =
       YARN_PREFIX + "am.blacklisting.enabled";
@@ -2037,6 +2180,15 @@ public class YarnConfiguration extends Configuration {
       YARN_PREFIX + "am.blacklisting.disable-failure-threshold";
   public static final float DEFAULT_AM_BLACKLISTING_DISABLE_THRESHOLD = 0.8f;
 
+
+  private static final String NM_SCRIPT_BASED_NODE_LABELS_PROVIDER_PREFIX =
+      NM_NODE_LABELS_PROVIDER_PREFIX + "script.";
+
+  public static final String NM_SCRIPT_BASED_NODE_LABELS_PROVIDER_PATH =
+      NM_SCRIPT_BASED_NODE_LABELS_PROVIDER_PREFIX + "path";
+
+  public static final String NM_SCRIPT_BASED_NODE_LABELS_PROVIDER_SCRIPT_OPTS =
+      NM_SCRIPT_BASED_NODE_LABELS_PROVIDER_PREFIX + "opts";
 
   public YarnConfiguration() {
     super();
