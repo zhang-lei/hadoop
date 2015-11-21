@@ -556,7 +556,8 @@ public class ApplicationMaster {
     appSubmitterUgi.addCredentials(credentials);
 
 
-    AMRMClientAsync.CallbackHandler allocListener = new RMCallbackHandler();
+    AMRMClientAsync.AbstractCallbackHandler allocListener =
+        new RMCallbackHandler();
     amRMClient = AMRMClientAsync.createAMRMClientAsync(1000, allocListener);
     amRMClient.init(conf);
     amRMClient.start();
@@ -731,7 +732,7 @@ public class ApplicationMaster {
   }
 
   @VisibleForTesting
-  class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
+  class RMCallbackHandler extends AMRMClientAsync.AbstractCallbackHandler {
     @SuppressWarnings("unchecked")
     @Override
     public void onContainersCompleted(List<ContainerStatus> completedContainers) {
@@ -835,6 +836,9 @@ public class ApplicationMaster {
     }
 
     @Override
+    public void onContainersResourceChanged(List<Container> containers) {}
+
+    @Override
     public void onShutdownRequest() {
       done = true;
     }
@@ -858,8 +862,7 @@ public class ApplicationMaster {
   }
 
   @VisibleForTesting
-  static class NMCallbackHandler
-    implements NMClientAsync.CallbackHandler {
+  static class NMCallbackHandler extends NMClientAsync.AbstractCallbackHandler {
 
     private ConcurrentMap<ContainerId, Container> containers =
         new ConcurrentHashMap<ContainerId, Container>();
@@ -908,6 +911,10 @@ public class ApplicationMaster {
     }
 
     @Override
+    public void onContainerResourceIncreased(
+        ContainerId containerId, Resource resource) {}
+
+    @Override
     public void onStartContainerError(ContainerId containerId, Throwable t) {
       LOG.error("Failed to start Container " + containerId);
       containers.remove(containerId);
@@ -926,6 +933,11 @@ public class ApplicationMaster {
       LOG.error("Failed to stop Container " + containerId);
       containers.remove(containerId);
     }
+
+    @Override
+    public void onIncreaseContainerResourceError(
+        ContainerId containerId, Throwable t) {}
+
   }
 
   /**

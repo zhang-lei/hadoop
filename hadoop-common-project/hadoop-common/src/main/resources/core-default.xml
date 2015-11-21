@@ -314,6 +314,11 @@ for ldap providers in the same way as above does.
     an LDAP server with a non-AD schema, this should be replaced with
     (&amp;(objectClass=inetOrgPerson)(uid={0}). {0} is a special string used to
     denote where the username fits into the filter.
+
+    If the LDAP server supports posixGroups, Hadoop can enable the feature by
+    setting the value of this property to "posixAccount" and the value of
+    the hadoop.security.group.mapping.ldap.search.filter.group property to
+    "posixGroup".
   </description>
 </property>
 
@@ -323,7 +328,9 @@ for ldap providers in the same way as above does.
   <description>
     An additional filter to use when searching for LDAP groups. This should be
     changed when resolving groups against a non-Active Directory installation.
-    posixGroups are currently not a supported group class.
+
+    See the description of hadoop.security.group.mapping.ldap.search.filter.user
+    to enable posixGroups support.
   </description>
 </property>
 
@@ -843,15 +850,9 @@ for ldap providers in the same way as above does.
 
 <property>
   <name>fs.s3a.threads.max</name>
-  <value>256</value>
+  <value>10</value>
   <description> Maximum number of concurrent active (part)uploads,
     which each use a thread from the threadpool.</description>
-</property>
-
-<property>
-  <name>fs.s3a.threads.core</name>
-  <value>15</value>
-  <description>Number of core threads in the threadpool.</description>
 </property>
 
 <property>
@@ -863,7 +864,7 @@ for ldap providers in the same way as above does.
 
 <property>
   <name>fs.s3a.max.total.tasks</name>
-  <value>1000</value>
+  <value>5</value>
   <description>Number of (part)uploads allowed to the queue before
     blocking additional uploads.</description>
 </property>

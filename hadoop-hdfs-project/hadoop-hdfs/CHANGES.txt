@@ -50,6 +50,9 @@ Trunk (Unreleased)
 
     HDFS-6440. Support more than 2 NameNodes. (Jesse Yates via atm)
 
+    HDFS-9057. allow/disallow snapshots via webhdfs
+    (Bramma Reddy Battula via vinayakumarb)
+
   IMPROVEMENTS
 
     HDFS-4665. Move TestNetworkTopologyWithNodeGroup to common.
@@ -191,6 +194,15 @@ Trunk (Unreleased)
 
     HDFS-8777. Erasure Coding: add tests for taking snapshots on EC files. 
     (Rakesh R via zhz)
+
+    HADOOP-11684. S3a to use thread pool that blocks clients.
+    (Thomas Demoor and Aaron Fabbri via lei)
+
+    HDFS-9234. WebHdfs: getContentSummary() should give quota for storage types.
+    (Surendra Singh Lilhore via xyao)
+
+    HDFS-8968. Erasure coding: a comprehensive I/O throughput benchmark tool.
+    (Rui Li via zhz)
 
   OPTIMIZATIONS
 
@@ -1626,6 +1638,31 @@ Release 2.8.0 - UNRELEASED
     HDFS-9363. Add fetchReplica() to FsDatasetTestUtils to return FsDataset-agnostic
     replica. (Tony Wu via lei)
 
+    HDFS-9377. Fix findbugs warnings in FSDirSnapshotOp.
+    (Mingliang Liu via Yongjun Zhang)
+
+    HDFS-9236. Missing sanity check for block size during block recovery.
+    (Tony Wu via Yongjun Zhang)
+
+    HDFS-9379. Make NNThroughputBenchmark$BlockReportStats support more than 10
+    datanodes. (Mingliang Liu via Arpit Agarwal)
+
+    HDFS-9398. Make ByteArraryManager log message in one-line format.
+    (Mingliang Liu via szetszwo)
+
+    HDFS-2261. AOP unit tests are not getting compiled or run. (wheat9)
+
+    HDFS-9369. Use ctest to run tests for hadoop-hdfs-native-client. (wheat9)
+
+    HDFS-9252. Change TestFileTruncate to use FsDatasetTestUtils to get block
+    file size and genstamp. (Lei (Eddy) Xu via cmccabe)
+
+    HDFS-8056. Decommissioned dead nodes should continue to be counted as dead
+    after NN restart. (mingma)
+
+    HDFS-9439. Include status of closeAck into exception message in DataNode#run.
+    (Xiao Chen via Yongjun Zhang)
+
   OPTIMIZATIONS
 
     HDFS-8026. Trace FSOutputSummer#writeChecksumChunks rather than
@@ -1670,6 +1707,14 @@ Release 2.8.0 - UNRELEASED
     HDFS-9312. Fix TestReplication to be FsDataset-agnostic. (lei)
 
     HDFS-9308. Add truncateMeta() and deleteMeta() to MiniDFSCluster. (Tony Wu via lei)
+
+    HDFS-9372. Remove dead code in DataStorage.recoverTransitionRead.
+    (Duo Zhang via wheat9)
+
+    HDFS-9282. Make data directory count and storage raw capacity related tests
+    FsDataset-agnostic. (Tony Wu via lei)
+
+    HDFS-9318. considerLoad factor can be improved. (Kuhu Shukla via kihwal)
 
   BUG FIXES
 
@@ -1921,9 +1966,6 @@ Release 2.8.0 - UNRELEASED
 
     HDFS-8551. Fix hdfs datanode CLI usage message.
     (Brahma Reddy Battula via xyao)
-
-    HDFS-8615. Correct HTTP method in WebHDFS document.
-    (Brahma Reddy Battula via aajisaka)
 
     HDFS-8337. Accessing httpfs via webhdfs doesn't work from a jar with
     kerberos. (Yongjun Zhang)
@@ -2236,6 +2278,57 @@ Release 2.8.0 - UNRELEASED
     HDFS-9357. NN UI renders icons of decommissioned DN incorrectly.
     (Surendra Singh Lilhore via wheat9)
 
+    HDFS-9360. Storage type usage isn't updated properly after file deletion.
+    (Ming Ma via xyao)
+
+    HDFS-9378. hadoop-hdfs-client tests do not write logs. (cnauroth)
+
+    HDFS-9384. TestWebHdfsContentLength intermittently hangs and fails due to
+    TCP conversation mismatch between client and server. (cnauroth)
+
+    HDFS-9394. branch-2 hadoop-hdfs-client fails during FileSystem ServiceLoader
+    initialization, because HftpFileSystem is missing.
+    (Mingliang Liu via cnauroth)
+
+    HDFS-9249. NPE is thrown if an IOException is thrown in NameNode constructor.
+    (Wei-Chiu Chuang via Yongjun Zhang)
+
+    HDFS-9401. Fix findbugs warnings in BlockRecoveryWorker.
+    (Brahma Reddy Battula via waltersu4549)
+
+    HDFS-9364. Unnecessary DNS resolution attempts when creating NameNodeProxies.
+    (Xiao Chen via zhz)
+
+    HDFS-9245. Fix findbugs warnings in hdfs-nfs/WriteCtx.
+    (Mingliang Liu via xyao)
+
+    HDFS-9396. Total files and directories on jmx and web UI on standby is
+    uninitialized. (kihwal)
+
+    HDFS-9410. Some tests should always reset sysout and syserr.
+    (Xiao Chen via waltersu4549)
+
+    HDFS-9413. getContentSummary() on standby should throw StandbyException.
+    (Brahma Reddy Battula via mingma)
+
+    HDFS-9387. Fix namenodeUri parameter parsing in NNThroughputBenchmark.
+    (Mingliang Liu via xyao)
+
+    HDFS-9421. NNThroughputBenchmark replication test NPE with -namenode option.
+    (Mingliang Liu via xyao)
+
+    HDFS-9358. TestNodeCount#testNodeCount timed out.
+    (Masatake Iwasaki via waltersu4549)
+
+    HDFS-9397. Fix typo for readChecksum() LOG.warn in BlockSender.java.
+    (Enrique Flores via Arpit Agarwal)
+
+    HDFS-9400. TestRollingUpgradeRollback fails on branch-2.
+    (Brahma Reddy Battula via cnauroth)
+
+    HDFS-9434. Recommission a datanode with 500k blocks may pause NN for 30
+    seconds for printing info log messags.  (szetszwo)
+
 Release 2.7.3 - UNRELEASED
 
   INCOMPATIBLE CHANGES
@@ -2250,6 +2343,12 @@ Release 2.7.3 - UNRELEASED
 
     HDFS-9289. Make DataStreamer#block thread safe and verify genStamp in
     commitBlock. (Chang Li via zhz)
+
+    HDFS-4937. ReplicationMonitor can infinite-loop in 
+    BlockPlacementPolicyDefault#chooseRandom(). (kihwal)
+
+    HDFS-9383. TestByteArrayManager#testByteArrayManager fails.
+    (szetszwo via kihwal)
 
 Release 2.7.2 - UNRELEASED
 
@@ -2325,6 +2424,9 @@ Release 2.7.2 - UNRELEASED
 
     HDFS-9317. Document fsck -blockId and -storagepolicy options in branch-2.7.
     (aajisaka)
+
+    HDFS-6481. DatanodeManager#getDatanodeStorageInfos() should check the
+    length of storageIDs. (szetszwo via Arpit Agarwal)
 
 Release 2.7.1 - 2015-07-06
 
@@ -3359,6 +3461,12 @@ Release 2.6.3 - UNRELEASED
   OPTIMIZATIONS
 
   BUG FIXES
+
+    HDFS-8615. Correct HTTP method in WebHDFS document.
+    (Brahma Reddy Battula via aajisaka)
+
+    HDFS-9431. DistributedFileSystem#concat fails if the target path is
+    relative. (Kazuho Fujii via aajisaka)
 
 Release 2.6.2 - 2015-10-28
 

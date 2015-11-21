@@ -24,7 +24,9 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
+import org.apache.hadoop.fs.DF;
 import org.apache.hadoop.hdfs.protocol.Block;
+import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.server.datanode.DataNode;
 import org.apache.hadoop.hdfs.server.datanode.FinalizedReplica;
@@ -56,6 +58,11 @@ public class FsDatasetImplTestUtils implements FsDatasetTestUtils {
   private static final Log LOG =
       LogFactory.getLog(FsDatasetImplTestUtils.class);
   private final FsDatasetImpl dataset;
+
+  /**
+   * By default we assume 2 data directories (volumes) per DataNode.
+   */
+  public static final int DEFAULT_NUM_OF_DATA_DIRS = 2;
 
   /**
    * A reference to the replica that is used to corrupt block / meta later.
@@ -169,6 +176,10 @@ public class FsDatasetImplTestUtils implements FsDatasetTestUtils {
     dataset = (FsDatasetImpl) datanode.getFSDataset();
   }
 
+  private File getBlockFile(ExtendedBlock eb) throws IOException {
+    return dataset.getBlockFile(eb.getBlockPoolId(), eb.getBlockId());
+  }
+
   /**
    * Return a materialized replica from the FsDatasetImpl.
    */
@@ -228,7 +239,6 @@ public class FsDatasetImplTestUtils implements FsDatasetTestUtils {
     dataset.volumeMap.add(block.getBlockPoolId(), rip);
     return rip;
   }
-
 
   @Override
   public Replica createRBW(ExtendedBlock eb) throws IOException {
@@ -321,5 +331,36 @@ public class FsDatasetImplTestUtils implements FsDatasetTestUtils {
   @Override
   public Replica fetchReplica(ExtendedBlock block) {
     return dataset.fetchReplicaInfo(block.getBlockPoolId(), block.getBlockId());
+  }
+
+  @Override
+  public int getDefaultNumOfDataDirs() {
+    return this.DEFAULT_NUM_OF_DATA_DIRS;
+  }
+
+  @Override
+  public long getRawCapacity() throws IOException {
+    try (FsVolumeReferences volRefs = dataset.getFsVolumeReferences()) {
+      Preconditions.checkState(volRefs.size() != 0);
+      DF df = new DF(new File(volRefs.get(0).getBasePath()),
+          dataset.datanode.getConf());
+      return df.getCapacity();
+    }
+  }
+
+  @Override
+  public long getStoredDataLength(ExtendedBlock block) throws IOException {
+    File f = getBlockFile(block);
+    try (RandomAccessFile raf = new RandomAccessFile(f, "r")) {
+      return raf.length();
+    }
+  }
+
+  @Override
+  public long getStoredGenerationStamp(ExtendedBlock block) throws IOException {
+    File f = getBlockFile(block);
+    File dir = f.getParentFile();
+    File[] files = FileUtil.listFiles(dir);
+    return FsDatasetUtil.getGenerationStampFromFile(files, f);
   }
 }

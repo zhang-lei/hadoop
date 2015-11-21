@@ -1,4 +1,4 @@
-/*
+/**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -15,24 +15,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hadoop.hdfs.protocol;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.fi.DataTransferTestUtil;
-import org.apache.hadoop.fi.PipelineTest;
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-/** Aspect for ClientProtocol */
-public aspect ClientProtocolAspects {
-  public static final Log LOG = LogFactory.getLog(ClientProtocolAspects.class);
+#include "org_apache_hadoop.h"
+#include "../include/erasure_code.h"
+#include "org_apache_hadoop_io_erasurecode_ErasureCodeNative.h"
 
-  pointcut addBlock():
-    call(LocatedBlock ClientProtocol.addBlock(String, String,..));
+#ifdef UNIX
+#include "config.h"
+#endif
 
-  after() returning(LocatedBlock lb): addBlock() {
-    PipelineTest pipelineTest = DataTransferTestUtil.getPipelineTest();
-    if (pipelineTest != null)
-      LOG.info("FI: addBlock "
-          + pipelineTest.initPipeline(lb));
+JNIEXPORT void JNICALL
+Java_org_apache_hadoop_io_erasurecode_ErasureCodeNative_loadLibrary
+(JNIEnv *env, jclass myclass) {
+  char errMsg[1024];
+  load_erasurecode_lib(errMsg, sizeof(errMsg));
+  if (strlen(errMsg) > 0) {
+    THROW(env, "java/lang/UnsatisfiedLinkError", errMsg);
   }
+}
+
+JNIEXPORT jstring JNICALL
+Java_org_apache_hadoop_io_erasurecode_ErasureCodeNative_getLibraryName
+(JNIEnv *env, jclass myclass) {
+  char* libName = get_library_name();
+  if (libName == NULL) {
+    libName = "Unavailable";
+  }
+  return (*env)->NewStringUTF(env, libName);
 }

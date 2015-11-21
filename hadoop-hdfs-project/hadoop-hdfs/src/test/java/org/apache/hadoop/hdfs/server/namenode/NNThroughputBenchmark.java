@@ -106,9 +106,9 @@ import org.apache.log4j.LogManager;
  * By default the refresh is never called.</li>
  * <li>-keepResults do not clean up the name-space after execution.</li>
  * <li>-useExisting do not recreate the name-space, use existing data.</li>
- * <li>-namenode will run the test against a namenode in another
- * process or on another host. If you use this option, the namenode
- * must have dfs.namenode.fs-limits.min-block-size set to 16.</li>
+ * <li>-namenode will run the test (except {@link ReplicationStats}) against a
+ * namenode in another process or on another host. If you use this option,
+ * the namenode must have dfs.namenode.fs-limits.min-block-size set to 16.</li>
  * </ol>
  * 
  * The benchmark first generates inputs for each thread so that the
@@ -126,8 +126,9 @@ public class NNThroughputBenchmark implements Tool {
   private static final String GENERAL_OPTIONS_USAGE = 
     "     [-keepResults] | [-logLevel L] | [-UGCacheRefreshCount G] |" +
     " [-namenode <namenode URI>]\n" +
-    "     If using -namenode, set the namenode's" +
-    "         dfs.namenode.fs-limits.min-block-size to 16.";
+    "     If using -namenode, set the namenode's " +
+    "dfs.namenode.fs-limits.min-block-size to 16. Replication test does not " +
+        "support -namenode.";
 
   static Configuration config;
   static NameNode nameNode;
@@ -382,10 +383,12 @@ public class NNThroughputBenchmark implements Tool {
         args.remove(ugrcIndex);
       }
 
-      try {
-        namenodeUri = StringUtils.popOptionWithArgument("-namenode", args);
-      } catch (IllegalArgumentException iae) {
-        printUsage();
+      if (args.indexOf("-namenode") >= 0) {
+        try {
+          namenodeUri = StringUtils.popOptionWithArgument("-namenode", args);
+        } catch (IllegalArgumentException iae) {
+          printUsage();
+        }
       }
 
       String type = args.get(1);
@@ -1145,14 +1148,10 @@ public class NNThroughputBenchmark implements Tool {
       int nrFiles = (int)Math.ceil((double)nrBlocks / blocksPerFile);
       datanodes = new TinyDatanode[nrDatanodes];
       // create data-nodes
-      String prevDNName = "";
       for(int idx=0; idx < nrDatanodes; idx++) {
         datanodes[idx] = new TinyDatanode(idx, blocksPerReport);
         datanodes[idx].register();
-        assert datanodes[idx].getXferAddr().compareTo(prevDNName) > 0
-          : "Data-nodes must be sorted lexicographically.";
         datanodes[idx].sendHeartbeat();
-        prevDNName = datanodes[idx].getXferAddr();
       }
 
       // create files 
@@ -1184,7 +1183,7 @@ public class NNThroughputBenchmark implements Tool {
             prevBlock, null, HdfsConstants.GRANDFATHER_INODE_ID, null);
         prevBlock = loc.getBlock();
         for(DatanodeInfo dnInfo : loc.getLocations()) {
-          int dnIdx = Arrays.binarySearch(datanodes, dnInfo.getXferAddr());
+          int dnIdx = dnInfo.getXferPort() - 1;
           datanodes[dnIdx].addBlock(loc.getBlock().getLocalBlock());
           ReceivedDeletedBlockInfo[] rdBlocks = { new ReceivedDeletedBlockInfo(
               loc.getBlock().getLocalBlock(),
@@ -1473,12 +1472,21 @@ public class NNThroughputBenchmark implements Tool {
         ops.add(opStat);
       }
       if(runAll || ReplicationStats.OP_REPLICATION_NAME.equals(type)) {
-        opStat = new ReplicationStats(args);
-        ops.add(opStat);
+        if (namenodeUri != null || args.contains("-namenode")) {
+          LOG.warn("The replication test is ignored as it does not support " +
+              "standalone namenode in another process or on another host. " +
+              "Please run replication test without -namenode argument.");
+        } else {
+          opStat = new ReplicationStats(args);
+          ops.add(opStat);
+        }
       }
       if(runAll || CleanAllStats.OP_CLEAN_NAME.equals(type)) {
         opStat = new CleanAllStats(args);
         ops.add(opStat);
+      }
+      if (ops.isEmpty()) {
+        printUsage();
       }
 
       if (namenodeUri == null) {
@@ -1503,8 +1511,6 @@ public class NNThroughputBenchmark implements Tool {
             DFSTestUtil.getRefreshUserMappingsProtocolProxy(config, nnUri);
         getBlockPoolId(dfs);
       }
-      if(ops.size() == 0)
-        printUsage();
       // run each benchmark
       for(OperationStatsBase op : ops) {
         LOG.info("Starting benchmark: " + op.getOpName());
