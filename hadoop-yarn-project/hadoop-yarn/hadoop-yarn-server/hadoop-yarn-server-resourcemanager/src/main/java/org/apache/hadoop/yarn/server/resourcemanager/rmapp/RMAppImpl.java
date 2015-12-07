@@ -458,9 +458,6 @@ public class RMAppImpl implements RMApp, Recoverable {
 
     this.stateMachine = stateMachineFactory.make(this);
 
-    rmContext.getRMApplicationHistoryWriter().applicationStarted(this);
-    rmContext.getSystemMetricsPublisher().appCreated(this, startTime);
-
     long localLogAggregationStatusTimeout =
         conf.getLong(YarnConfiguration.LOG_AGGREGATION_STATUS_TIME_OUT_MS,
           YarnConfiguration.DEFAULT_LOG_AGGREGATION_STATUS_TIME_OUT_MS);
@@ -854,6 +851,9 @@ public class RMAppImpl implements RMApp, Recoverable {
     //TODO recover collector address.
     //this.collectorAddr = appState.getCollectorAddr();
 
+    // send the ATS create Event
+    sendATSCreateEvent(this, this.startTime);
+
     for(int i=0; i<appState.getAttemptCount(); ++i) {
       // create attempt
       createNewAttempt();
@@ -1142,6 +1142,9 @@ public class RMAppImpl implements RMApp, Recoverable {
       // communication
       LOG.info("Storing application with id " + app.applicationId);
       app.rmContext.getStateStore().storeNewApplication(app);
+
+      // send the ATS create Event
+      app.sendATSCreateEvent(app, app.startTime);
     }
   }
 
@@ -1785,5 +1788,10 @@ public class RMAppImpl implements RMApp, Recoverable {
           ? NodeLabel.DEFAULT_NODE_LABEL_PARTITION : amNodeLabelExpression;
     }
     return amNodeLabelExpression;
+  }
+
+  private void sendATSCreateEvent(RMApp app, long startTime) {
+    rmContext.getRMApplicationHistoryWriter().applicationStarted(app);
+    rmContext.getSystemMetricsPublisher().appCreated(app, startTime);
   }
 }
