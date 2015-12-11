@@ -641,6 +641,7 @@ public class TestClientRMService {
     ClientRMService rmService =
         new ClientRMService(rmContext, yarnScheduler, appManager,
             mockAclsManager, mockQueueACLsManager, null);
+    rmService.init(new Configuration());
 
     // without name and queue
 
@@ -732,6 +733,7 @@ public class TestClientRMService {
     ClientRMService rmService =
         new ClientRMService(rmContext, yarnScheduler, appManager,
             mockAclsManager, mockQueueACLsManager, null);
+    rmService.init(new Configuration());
 
     // Initialize appnames and queues
     String[] queues = {QUEUE_1, QUEUE_2};
@@ -895,6 +897,7 @@ public class TestClientRMService {
     final ClientRMService rmService =
         new ClientRMService(rmContext, yarnScheduler, appManager, null, null,
             null);
+    rmService.init(new Configuration());
 
     // submit an app and wait for it to block while in app submission
     Thread t = new Thread() {

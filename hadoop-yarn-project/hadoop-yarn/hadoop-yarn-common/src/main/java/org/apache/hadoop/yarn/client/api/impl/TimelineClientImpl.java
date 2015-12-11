@@ -124,7 +124,7 @@ public class TimelineClientImpl extends TimelineClient {
   private int maxServiceRetries;
   private long serviceRetryInterval;
 
-  private boolean newTimelineService = false;
+  private boolean timelineServiceV2 = false;
 
   @Private
   @VisibleForTesting
@@ -270,7 +270,7 @@ public class TimelineClientImpl extends TimelineClient {
 
   public TimelineClientImpl(ApplicationId applicationId) {
     super(TimelineClientImpl.class.getName(), applicationId);
-    this.newTimelineService = true;
+    this.timelineServiceV2 = true;
   }
 
   protected void serviceInit(Configuration conf) throws Exception {
@@ -299,13 +299,13 @@ public class TimelineClientImpl extends TimelineClient {
         new TimelineURLConnectionFactory()), cc);
     TimelineJerseyRetryFilter retryFilter = new TimelineJerseyRetryFilter();
     // TODO need to cleanup filter retry later.
-    if (!newTimelineService) {
+    if (!timelineServiceV2) {
       client.addFilter(retryFilter);
     }
 
     // old version timeline service need to get address from configuration
     // while new version need to auto discovery (with retry).
-    if (newTimelineService) {
+    if (timelineServiceV2) {
       maxServiceRetries = conf.getInt(
           YarnConfiguration.TIMELINE_SERVICE_CLIENT_MAX_RETRIES,
           YarnConfiguration.DEFAULT_TIMELINE_SERVICE_CLIENT_MAX_RETRIES);
@@ -353,6 +353,9 @@ public class TimelineClientImpl extends TimelineClient {
   private void putEntities(boolean async,
       org.apache.hadoop.yarn.api.records.timelineservice.TimelineEntity... entities)
       throws IOException, YarnException {
+    if (!timelineServiceV2) {
+      throw new YarnException("v.2 method is invoked on a v.1.x client");
+    }
     org.apache.hadoop.yarn.api.records.timelineservice.TimelineEntities
         entitiesContainer =
         new org.apache.hadoop.yarn.api.records.timelineservice.TimelineEntities();

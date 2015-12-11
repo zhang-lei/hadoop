@@ -41,6 +41,7 @@ import org.apache.hadoop.yarn.server.nodemanager.Context;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.Container;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerImpl;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerKillEvent;
+import org.apache.hadoop.yarn.server.nodemanager.timelineservice.NMTimelinePublisher;
 import org.apache.hadoop.yarn.server.nodemanager.util.NodeManagerHardwareUtils;
 import org.apache.hadoop.yarn.util.ResourceCalculatorPlugin;
 import org.apache.hadoop.yarn.util.ResourceCalculatorProcessTree;
@@ -559,9 +560,13 @@ public class ContainersMonitorImpl extends AbstractService implements
 
             ContainerImpl container =
                 (ContainerImpl) context.getContainers().get(containerId);
-            container.getNMTimelinePublisher().reportContainerResourceUsage(
-                container, currentTime, pId, currentPmemUsage,
-                cpuUsageTotalCoresPercentage);
+            NMTimelinePublisher nmMetricsPublisher =
+                container.getNMTimelinePublisher();
+            if (nmMetricsPublisher != null) {
+              nmMetricsPublisher.reportContainerResourceUsage(
+                  container, currentTime, pId, currentPmemUsage,
+                  cpuUsageTotalCoresPercentage);
+            }
           } catch (Exception e) {
             // Log the exception and proceed to the next container.
             LOG.warn("Uncaught exception in ContainersMonitorImpl "
